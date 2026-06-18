@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-ssr
+.pnpm-store
+*.local
+*.log
+
+.env
+.env.*
+!.env.example
+!.env.local.example

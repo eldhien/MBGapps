@@ -50,13 +50,17 @@ foodReportsRouter.post("/", async (req, res, next) => {
       return res.status(401).json({ message: "Tidak terautentikasi." })
     }
 
-    const { kategori, deskripsi, sekolahId, batchId } = req.body as {
+    const { kategori, kategoriLainnya, deskripsi, sekolahId, batchId } =
+      req.body as {
       kategori?: string
+      kategoriLainnya?: string
       deskripsi?: string
       sekolahId?: string
       batchId?: string
     }
     const normalizedDescription = deskripsi?.trim()
+    const normalizedOtherCategory =
+      kategori === "LAINNYA" ? kategoriLainnya?.trim() || null : null
     const resolvedSekolahId =
       currentUser.role === "SEKOLAH"
         ? currentUser.id
@@ -70,9 +74,16 @@ foodReportsRouter.post("/", async (req, res, next) => {
       return res.status(400).json({ message: "Kategori laporan tidak valid." })
     }
 
+    if (kategori === "LAINNYA" && !normalizedOtherCategory) {
+      return res
+        .status(400)
+        .json({ message: "Kategori lainnya wajib diisi." })
+    }
+
     const report = await prisma.foodReport.create({
       data: {
         kategori: kategori as ReportCategory,
+        kategoriLainnya: normalizedOtherCategory,
         deskripsi: normalizedDescription,
         sekolahId: resolvedSekolahId,
         batchId: batchId?.trim() || undefined,
@@ -88,13 +99,17 @@ foodReportsRouter.post("/", async (req, res, next) => {
       return res.status(401).json({ message: "Tidak terautentikasi." })
     }
 
-    const { kategori, deskripsi, sekolahId, batchId } = req.body as {
+    const { kategori, kategoriLainnya, deskripsi, sekolahId, batchId } =
+      req.body as {
       kategori?: string
+      kategoriLainnya?: string
       deskripsi?: string
       sekolahId?: string
       batchId?: string
     }
     const normalizedDescription = deskripsi?.trim()
+    const normalizedOtherCategory =
+      kategori === "LAINNYA" ? kategoriLainnya?.trim() || null : null
     const resolvedSekolahId =
       currentUser.role === "SEKOLAH"
         ? currentUser.id
@@ -108,8 +123,15 @@ foodReportsRouter.post("/", async (req, res, next) => {
       return res.status(400).json({ message: "Kategori laporan tidak valid." })
     }
 
+    if (kategori === "LAINNYA" && !normalizedOtherCategory) {
+      return res
+        .status(400)
+        .json({ message: "Kategori lainnya wajib diisi." })
+    }
+
     const report = createFallbackFoodReport({
       kategori: kategori as ReportCategory,
+      kategoriLainnya: normalizedOtherCategory,
       deskripsi: normalizedDescription,
       sekolahId: resolvedSekolahId,
       batchId: batchId?.trim() || null,

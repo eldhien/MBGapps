@@ -4,7 +4,6 @@ import * as React from "react"
 
 import { NavMain } from "@/components/nav-main"
 import { NavUser } from "@/components/nav-user"
-import { TeamSwitcher } from "@/components/team-switcher"
 import {
   Sidebar,
   SidebarContent,
@@ -15,16 +14,6 @@ import {
 import { useAuth } from "@/features/auth/AuthProvider"
 import { formatRole } from "@/features/auth/types"
 import { getVisibleNavigation } from "@/features/navigation/navigation"
-import { GalleryVerticalEndIcon } from "lucide-react"
-
-const data = {
-  teams: [
-    {
-      name: "MBG App",
-      logo: <GalleryVerticalEndIcon />,
-    },
-  ],
-}
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { profile, signOut } = useAuth()
@@ -39,22 +28,28 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
     title: page.title,
     url: page.path,
     icon: page.icon,
+    children: page.children,
   }))
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
-        <TeamSwitcher
-          teams={data.teams.map((team) => ({
-            ...team,
-            plan: brandSubtitle,
-          }))}
-        />
+      <SidebarHeader className="border-b px-3 py-3 group-data-[collapsible=icon]:px-2">
+        <div className="flex h-10 items-center gap-3 rounded-md px-1">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground">
+            MB
+          </div>
+          <div className="min-w-0 text-sm leading-tight group-data-[collapsible=icon]:hidden">
+            <p className="truncate font-semibold">MBG App</p>
+            <p className="truncate text-xs text-sidebar-foreground/60">
+              {brandSubtitle}
+            </p>
+          </div>
+        </div>
       </SidebarHeader>
-      <SidebarContent>
-        <NavMain items={navItems} />
+      <SidebarContent className="px-2 py-3">
+        <NavMain items={navItems} label={null} />
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="border-t p-2">
         <NavUser
           user={{
             name: userName,

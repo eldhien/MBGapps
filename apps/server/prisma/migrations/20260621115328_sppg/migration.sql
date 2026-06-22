@@ -1,60 +1,39 @@
-/*
-  Warnings:
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'BatchStatus') THEN
+    CREATE TYPE "BatchStatus" AS ENUM ('DRAFT', 'SCHEDULED', 'IN_PRODUCTION', 'DISTRIBUTED', 'CANCELLED');
+  END IF;
+END $$;
 
-  - You are about to drop the column `alat_photo` on the `kitchen_checklists` table. All the data in the column will be lost.
-  - You are about to drop the column `apd_photo` on the `kitchen_checklists` table. All the data in the column will be lost.
-  - You are about to drop the column `kebersihan_photo` on the `kitchen_checklists` table. All the data in the column will be lost.
-  - You are about to drop the column `kondisi_dapur` on the `kitchen_checklists` table. All the data in the column will be lost.
-  - You are about to drop the column `school_id` on the `kitchen_checklists` table. All the data in the column will be lost.
-  - The primary key for the `users` table will be changed. If it partially fails, the table could be left without primary key constraint.
-  - Added the required column `alatPhoto` to the `kitchen_checklists` table without a default value. This is not possible if the table is not empty.
-  - Added the required column `apdPhoto` to the `kitchen_checklists` table without a default value. This is not possible if the table is not empty.
-  - Added the required column `kebersihanPhoto` to the `kitchen_checklists` table without a default value. This is not possible if the table is not empty.
-  - Added the required column `kondisiDapur` to the `kitchen_checklists` table without a default value. This is not possible if the table is not empty.
-  - Added the required column `schoolId` to the `kitchen_checklists` table without a default value. This is not possible if the table is not empty.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'DistributionStatus') THEN
+    CREATE TYPE "DistributionStatus" AS ENUM ('PENDING', 'IN_TRANSIT', 'DELIVERED', 'FAILED');
+  END IF;
+END $$;
 
-*/
--- CreateEnum
-CREATE TYPE "BatchStatus" AS ENUM ('DRAFT', 'SCHEDULED', 'IN_PRODUCTION', 'DISTRIBUTED', 'CANCELLED');
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'FoodReportStatus') THEN
+    CREATE TYPE "FoodReportStatus" AS ENUM ('PENDING', 'REVIEWED', 'RESOLVED');
+  END IF;
+END $$;
 
--- CreateEnum
-CREATE TYPE "DistributionStatus" AS ENUM ('PENDING', 'IN_TRANSIT', 'DELIVERED', 'FAILED');
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ReportCategory') THEN
+    CREATE TYPE "ReportCategory" AS ENUM ('BASI', 'RUSAK', 'TERLAMBAT', 'SUHU_TIDAK_SESUAI', 'LAINNYA');
+  END IF;
+END $$;
 
--- CreateEnum
-CREATE TYPE "FoodReportStatus" AS ENUM ('PENDING', 'REVIEWED', 'RESOLVED');
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'ReceivingStatus') THEN
+    CREATE TYPE "ReceivingStatus" AS ENUM ('PENDING', 'COMPLETED', 'REJECTED');
+  END IF;
+END $$;
 
--- CreateEnum
-CREATE TYPE "ReportCategory" AS ENUM ('BASI', 'RUSAK', 'TERLAMBAT', 'SUHU_TIDAK_SESUAI', 'LAINNYA');
-
--- CreateEnum
-CREATE TYPE "ReceivingStatus" AS ENUM ('PENDING', 'COMPLETED', 'REJECTED');
-
--- DropIndex
-DROP INDEX IF EXISTS "kitchen_checklists_school_id_idx";
-
--- DropIndex
-DROP INDEX IF EXISTS "kitchen_checklists_timestamp_idx";
-
--- AlterTable
-ALTER TABLE "kitchen_checklists" DROP COLUMN "alat_photo",
-DROP COLUMN "apd_photo",
-DROP COLUMN "kebersihan_photo",
-DROP COLUMN "kondisi_dapur",
-DROP COLUMN "school_id",
-ADD COLUMN     "alatPhoto" TEXT NOT NULL,
-ADD COLUMN     "apdPhoto" TEXT NOT NULL,
-ADD COLUMN     "kebersihanPhoto" TEXT NOT NULL,
-ADD COLUMN     "kondisiDapur" TEXT NOT NULL,
-ADD COLUMN     "schoolId" TEXT NOT NULL,
-ALTER COLUMN "id" DROP DEFAULT;
-
--- AlterTable
-ALTER TABLE "users" DROP CONSTRAINT "users_pkey",
-ALTER COLUMN "id" SET DATA TYPE TEXT,
-ADD CONSTRAINT "users_pkey" PRIMARY KEY ("id");
-
--- CreateTable
-CREATE TABLE "batches" (
+CREATE TABLE IF NOT EXISTS "batches" (
     "id" TEXT NOT NULL,
     "batch_id_unik" TEXT NOT NULL,
     "namaMenu" TEXT NOT NULL,
@@ -71,8 +50,7 @@ CREATE TABLE "batches" (
     CONSTRAINT "batches_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "distributions" (
+CREATE TABLE IF NOT EXISTS "distributions" (
     "id" TEXT NOT NULL,
     "batchId" TEXT NOT NULL,
     "sekolahId" TEXT NOT NULL,
@@ -85,23 +63,21 @@ CREATE TABLE "distributions" (
     CONSTRAINT "distributions_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "food_reports" (
-    "id" TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS "food_reports" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
     "kategori" "ReportCategory" NOT NULL,
     "deskripsi" TEXT NOT NULL,
     "sekolahId" TEXT NOT NULL,
     "batchId" TEXT,
     "status" "FoodReportStatus" NOT NULL DEFAULT 'PENDING',
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
+    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "food_reports_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "student_complaints" (
-    "id" TEXT NOT NULL,
+CREATE TABLE IF NOT EXISTS "student_complaints" (
+    "id" TEXT NOT NULL DEFAULT gen_random_uuid()::text,
     "jumlahSiswa" INTEGER NOT NULL,
     "gejala" TEXT NOT NULL,
     "waktu_kejadian" TIMESTAMP(3) NOT NULL,
@@ -109,13 +85,12 @@ CREATE TABLE "student_complaints" (
     "sekolahId" TEXT NOT NULL,
     "batchId" TEXT,
     "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
+    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "student_complaints_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "receiving_receipts" (
+CREATE TABLE IF NOT EXISTS "receiving_receipts" (
     "id" TEXT NOT NULL,
     "distributionId" TEXT NOT NULL,
     "status" "ReceivingStatus" NOT NULL DEFAULT 'PENDING',
@@ -127,14 +102,39 @@ CREATE TABLE "receiving_receipts" (
     CONSTRAINT "receiving_receipts_pkey" PRIMARY KEY ("id")
 );
 
--- CreateIndex
-CREATE UNIQUE INDEX "batches_batch_id_unik_key" ON "batches"("batch_id_unik");
+CREATE UNIQUE INDEX IF NOT EXISTS "batches_batch_id_unik_key" ON "batches"("batch_id_unik");
+CREATE UNIQUE INDEX IF NOT EXISTS "receiving_receipts_distributionId_key" ON "receiving_receipts"("distributionId");
+CREATE INDEX IF NOT EXISTS "food_reports_sekolah_id_idx" ON "food_reports"("sekolahId");
+CREATE INDEX IF NOT EXISTS "food_reports_created_at_idx" ON "food_reports"("created_at");
+CREATE INDEX IF NOT EXISTS "student_complaints_sekolah_id_idx" ON "student_complaints"("sekolahId");
+CREATE INDEX IF NOT EXISTS "student_complaints_waktu_kejadian_idx" ON "student_complaints"("waktu_kejadian");
 
--- CreateIndex
-CREATE UNIQUE INDEX "receiving_receipts_distributionId_key" ON "receiving_receipts"("distributionId");
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'distributions_batchId_fkey'
+      AND conrelid = 'public.distributions'::regclass
+  ) THEN
+    ALTER TABLE "distributions"
+      ADD CONSTRAINT "distributions_batchId_fkey"
+      FOREIGN KEY ("batchId") REFERENCES "batches"("id")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "distributions" ADD CONSTRAINT "distributions_batchId_fkey" FOREIGN KEY ("batchId") REFERENCES "batches"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "receiving_receipts" ADD CONSTRAINT "receiving_receipts_distributionId_fkey" FOREIGN KEY ("distributionId") REFERENCES "distributions"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'receiving_receipts_distributionId_fkey'
+      AND conrelid = 'public.receiving_receipts'::regclass
+  ) THEN
+    ALTER TABLE "receiving_receipts"
+      ADD CONSTRAINT "receiving_receipts_distributionId_fkey"
+      FOREIGN KEY ("distributionId") REFERENCES "distributions"("id")
+      ON DELETE RESTRICT ON UPDATE CASCADE;
+  END IF;
+END $$;

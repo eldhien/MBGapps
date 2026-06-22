@@ -1,22 +1,62 @@
 import { AlertToast } from "@/components/ui/alert-toast"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Skeleton } from "@/components/ui/skeleton"
-import type { BatchSummary, StudentComplaint } from "@/lib/api"
-import { api } from "@/lib/api"
-import { DashboardShell } from "@/pages/components/DashboardShell"
 import {
-  ActivityIcon,
-  ClipboardIcon,
-  SchoolIcon,
-  UsersRoundIcon,
-} from "lucide-react"
-import { useEffect, useMemo, useState, type FormEvent } from "react"
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { Skeleton } from "@/components/ui/skeleton"
+import type { BatchSummary, DashboardAnalytics, StudentComplaint } from "@/lib/api"
+import { api } from "@/lib/api"
+import {
+  getCachedPageData,
+  pageCacheKeys,
+  setCachedPageData,
+} from "@/lib/page-cache"
+import { DashboardShell } from "@/pages/components/DashboardShell"
+import { CalendarIcon, ClockIcon } from "lucide-react"
+import { useEffect, useState, type FormEvent } from "react"
 
 function getCurrentDateTimeLocal() {
   const now = new Date()
   const offsetMs = now.getTimezoneOffset() * 60_000
   return new Date(now.getTime() - offsetMs).toISOString().slice(0, 16)
+}
+
+function toDateTimeLocalValue(date: Date) {
+  const offsetMs = date.getTimezoneOffset() * 60_000
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16)
+}
+
+function parseDateTimeLocal(value: string) {
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed
+}
+
+function formatDateTimeLabel(value: string) {
+  const date = parseDateTimeLocal(value)
+
+  return date.toLocaleString("id-ID", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  })
+}
+
+function updateDatePart(currentValue: string, selectedDate: Date) {
+  const current = parseDateTimeLocal(currentValue)
+  selectedDate.setHours(current.getHours(), current.getMinutes(), 0, 0)
+
+  return toDateTimeLocalValue(selectedDate)
+}
+
+function updateTimePart(currentValue: string, timeValue: string) {
+  const [hours = "0", minutes = "0"] = timeValue.split(":")
+  const current = parseDateTimeLocal(currentValue)
+  current.setHours(Number(hours), Number(minutes), 0, 0)
+
+  return toDateTimeLocalValue(current)
 }
 
 const initialForm = {
@@ -27,10 +67,20 @@ const initialForm = {
   waktuKejadian: getCurrentDateTimeLocal(),
 }
 
-export function StudentComplaintsPage() {
-  const [complaints, setComplaints] = useState<StudentComplaint[]>([])
-  const [batches, setBatches] = useState<BatchSummary[]>([])
-  const [loading, setLoading] = useState(true)
+export function StudentComplaintsPage({
+  mode = "create",
+}: {
+  mode?: "create" | "history"
+}) {
+  const cachedComplaints = getCachedPageData<StudentComplaint[]>(
+    pageCacheKeys.studentComplaints
+  )
+  const cachedBatches = getCachedPageData<BatchSummary[]>(pageCacheKeys.batches)
+  const [complaints, setComplaints] = useState<StudentComplaint[]>(
+    cachedComplaints ?? []
+  )
+  const [batches, setBatches] = useState<BatchSummary[]>(cachedBatches ?? [])
+  const [loading, setLoading] = useState(!cachedComplaints)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -40,7 +90,23 @@ export function StudentComplaintsPage() {
     void loadData()
   }, [])
 
-  const loadData = async () => {
+  const loadData = async (force = false) => {
+    if (!force) {
+      const complaintsCache = getCachedPageData<StudentComplaint[]>(
+        pageCacheKeys.studentComplaints
+      )
+      const batchesCache = getCachedPageData<BatchSummary[]>(
+        pageCacheKeys.batches
+      )
+
+      if (complaintsCache) {
+        setComplaints(complaintsCache)
+        setBatches(batchesCache ?? [])
+        setLoading(false)
+        return
+      }
+    }
+
     setLoading(true)
     setError(null)
 
@@ -51,13 +117,20 @@ export function StudentComplaintsPage() {
       ])
 
       if (complaintsResponse.status === "fulfilled") {
-        setComplaints(complaintsResponse.value.data)
+        setComplaints(
+          setCachedPageData(
+            pageCacheKeys.studentComplaints,
+            complaintsResponse.value.data
+          )
+        )
       } else {
         throw complaintsResponse.reason
       }
 
       if (batchesResponse.status === "fulfilled") {
-        setBatches(batchesResponse.value.data)
+        setBatches(
+          setCachedPageData(pageCacheKeys.batches, batchesResponse.value.data)
+        )
       } else {
         setBatches([])
       }
@@ -95,13 +168,30 @@ export function StudentComplaintsPage() {
     }
 
     try {
-      await api.studentComplaints.create(payload)
+      const response = await api.studentComplaints.create(payload)
+      setComplaints((currentComplaints) =>
+        setCachedPageData(pageCacheKeys.studentComplaints, [
+          response.data,
+          ...currentComplaints,
+        ])
+      )
+
+      const dashboardCache = getCachedPageData<DashboardAnalytics>(
+        pageCacheKeys.dashboardAnalytics
+      )
+
+      if (dashboardCache) {
+        setCachedPageData(pageCacheKeys.dashboardAnalytics, {
+          ...dashboardCache,
+          totalStudentComplaints: dashboardCache.totalStudentComplaints + 1,
+        })
+      }
+
       setForm({
         ...initialForm,
         waktuKejadian: getCurrentDateTimeLocal(),
       })
       setSuccessMessage("Keluhan siswa berhasil disimpan.")
-      await loadData()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan.")
     } finally {
@@ -109,24 +199,11 @@ export function StudentComplaintsPage() {
     }
   }
 
-  const summary = useMemo(() => {
-    const totalAffectedStudents = complaints.reduce(
-      (total, item) => total + item.jumlahSiswa,
-      0
-    )
-
-    return {
-      latest:
-        complaints[0]?.waktuKejadian
-          ? new Date(complaints[0].waktuKejadian).toLocaleString("id-ID")
-          : "Belum ada keluhan",
-      totalAffectedStudents,
-      totalCases: complaints.length,
-    }
-  }, [complaints])
+  const isCreatePage = mode === "create"
+  const pageTitle = isCreatePage ? "Buat Keluhan Siswa" : "Riwayat Keluhan"
 
   return (
-    <DashboardShell title="Keluhan Siswa">
+    <DashboardShell title={pageTitle}>
       {successMessage ? (
         <AlertToast
           title="Berhasil"
@@ -143,71 +220,24 @@ export function StudentComplaintsPage() {
         />
       ) : null}
 
-      <Card className="overflow-hidden border-border/70 bg-gradient-to-br from-card via-card to-muted/60 relative">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
-        <CardContent className="grid gap-6 p-6 lg:grid-cols-[1.2fr_0.8fr] relative z-1">
-          <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
-              <SchoolIcon className="size-4 text-rose-500 animate-pulse" />
-              Pelaporan Keluhan Siswa Pascakonsumsi
-            </div>
-            <div className="space-y-2">
-              <h1 className="text-3xl font-bold tracking-tight">
-                Simpan Kejadian Siswa Terdampak secara Terpusat
-              </h1>
-              <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                Gunakan formulir untuk mencatat jumlah siswa terdampak, gejala fisik, waktu mulai dirasakan,
-                serta tindakan medis awal agar koordinasi dengan puskesmas/SPPG berjalan cepat.
-              </p>
-            </div>
-          </div>
+      <section className="pb-1">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Keluhan siswa
+          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {isCreatePage ? "Buat Keluhan Siswa" : "Riwayat Keluhan Siswa"}
+          </h1>
+          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+            {isCreatePage
+              ? "Catat jumlah siswa terdampak, gejala, waktu kejadian, dan tindakan awal."
+              : "Pantau keluhan siswa yang sudah tercatat untuk tindak lanjut."}
+          </p>
+        </div>
+      </section>
 
-          <div className="grid gap-3 grid-cols-2">
-            {[
-              {
-                icon: ClipboardIcon,
-                label: "Total Laporan",
-                value: summary.totalCases,
-                color: "text-blue-500 bg-blue-500/10 dark:bg-blue-500/20 border-blue-500/20",
-              },
-              {
-                icon: UsersRoundIcon,
-                label: "Siswa Terdampak",
-                value: summary.totalAffectedStudents,
-                color: "text-rose-500 bg-rose-500/10 dark:bg-rose-500/20 border-rose-500/20",
-              },
-              {
-                icon: ActivityIcon,
-                label: "Update Terakhir",
-                value: loading ? "..." : summary.latest,
-                color: "text-amber-500 bg-amber-500/10 dark:bg-amber-500/20 border-amber-500/20",
-              },
-              {
-                icon: SchoolIcon,
-                label: "Fokus Penanganan",
-                value: "Respon Cepat",
-                color: "text-emerald-500 bg-emerald-500/10 dark:bg-emerald-500/20 border-emerald-500/20",
-              },
-            ].map((item) => {
-              const Icon = item.icon
-
-              return (
-                <div key={item.label} className="rounded-2xl border bg-background/80 p-4 hover:shadow-xs transition-shadow">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <div className={`p-1 rounded-md ${item.color}`}>
-                      <Icon className="size-3.5" />
-                    </div>
-                    <span>{item.label}</span>
-                  </div>
-                  <p className="mt-2.5 text-sm font-semibold truncate leading-none">{item.value}</p>
-                </div>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      <section className="grid gap-6 xl:grid-cols-[1fr_1.1fr]">
+      <section className="grid gap-6">
+        {isCreatePage ? (
         <Card className="border-border/70 bg-card">
           <CardHeader>
             <CardTitle className="text-xl">Laporkan Keluhan Siswa</CardTitle>
@@ -234,20 +264,55 @@ export function StudentComplaintsPage() {
                   />
                 </label>
 
-                <label className="grid gap-2 text-sm font-semibold">
+                <div className="grid gap-2 text-sm font-semibold">
                   Waktu Kejadian
-                  <input
-                    className="h-11 rounded-xl border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                    type="datetime-local"
-                    value={form.waktuKejadian}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        waktuKejadian: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11 justify-start rounded-xl px-3 text-left text-sm font-medium shadow-xs"
+                      >
+                        <CalendarIcon className="size-4 text-muted-foreground" />
+                        <span>{formatDateTimeLabel(form.waktuKejadian)}</span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-80 p-3">
+                      <Calendar
+                        selected={parseDateTimeLocal(form.waktuKejadian)}
+                        onSelect={(date) =>
+                          setForm((current) => ({
+                            ...current,
+                            waktuKejadian: updateDatePart(
+                              current.waktuKejadian,
+                              date
+                            ),
+                          }))
+                        }
+                      />
+                      <label className="mt-3 grid gap-2 border-t pt-3 text-sm font-medium">
+                        <span className="inline-flex items-center gap-2">
+                          <ClockIcon className="size-4 text-muted-foreground" />
+                          Jam kejadian
+                        </span>
+                        <input
+                          className="h-10 rounded-lg border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                          type="time"
+                          value={form.waktuKejadian.slice(11, 16)}
+                          onChange={(event) =>
+                            setForm((current) => ({
+                              ...current,
+                              waktuKejadian: updateTimePart(
+                                current.waktuKejadian,
+                                event.target.value
+                              ),
+                            }))
+                          }
+                        />
+                      </label>
+                    </PopoverContent>
+                  </Popover>
+                </div>
               </div>
 
               <label className="grid gap-2 text-sm font-semibold">
@@ -307,7 +372,9 @@ export function StudentComplaintsPage() {
             </form>
           </CardContent>
         </Card>
+        ) : null}
 
+        {!isCreatePage ? (
         <Card className="border-border/70 bg-card">
           <CardHeader>
             <CardTitle className="text-xl">Riwayat Keluhan</CardTitle>
@@ -316,15 +383,22 @@ export function StudentComplaintsPage() {
             </p>
           </CardHeader>
           <CardContent className="grid gap-4">
-            {loading
-              ? Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className="rounded-2xl border p-5 space-y-3">
-                    <Skeleton className="h-5 w-44" />
-                    <Skeleton className="mt-3 h-4 w-full" />
-                    <Skeleton className="mt-2 h-4 w-3/4" />
+            {loading ? (
+              <div className="overflow-hidden rounded-xl border">
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="grid gap-3 border-b p-4 last:border-0 md:grid-cols-[0.9fr_0.55fr_1.2fr_1.2fr_0.7fr]"
+                  >
+                    <Skeleton className="h-5 w-32" />
+                    <Skeleton className="h-5 w-16" />
+                    <Skeleton className="h-5 w-full" />
+                    <Skeleton className="h-5 w-full" />
+                    <Skeleton className="h-5 w-24" />
                   </div>
-                ))
-              : null}
+                ))}
+              </div>
+            ) : null}
 
             {!loading && complaints.length === 0 ? (
               <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
@@ -332,51 +406,51 @@ export function StudentComplaintsPage() {
               </div>
             ) : null}
 
-            {!loading
-              ? complaints.map((complaint) => (
-                  <article key={complaint.id} className="rounded-2xl border bg-card p-5 space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="rounded-full bg-rose-500/10 text-rose-600 dark:bg-rose-500/20 dark:text-rose-400 size-10 flex items-center justify-center border border-rose-500/20 font-bold text-sm shrink-0">
-                          {complaint.jumlahSiswa}
-                        </div>
-                        <div>
-                          <h3 className="font-semibold text-sm leading-none text-foreground">Siswa Terdampak</h3>
-                          <p className="text-[10px] text-muted-foreground mt-1.5">
-                            {new Date(complaint.waktuKejadian).toLocaleString("id-ID")}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="rounded-full bg-muted/60 px-2.5 py-1 text-[10px] font-semibold text-muted-foreground border">
-                        Batch: {complaint.batchId ? "Tersambung" : "Belum dipilih"}
-                      </span>
+            {!loading && complaints.length > 0 ? (
+              <div className="overflow-hidden rounded-xl border">
+                <div className="hidden grid-cols-[0.9fr_0.55fr_1.2fr_1.2fr_0.7fr] gap-3 border-b bg-muted/40 px-4 py-3 text-xs font-semibold text-muted-foreground md:grid">
+                  <span>Waktu</span>
+                  <span>Siswa</span>
+                  <span>Gejala</span>
+                  <span>Tindakan</span>
+                  <span>Batch</span>
+                </div>
+                {complaints.map((complaint) => (
+                  <div
+                    key={complaint.id}
+                    className="grid gap-3 border-b p-4 last:border-0 md:grid-cols-[0.9fr_0.55fr_1.2fr_1.2fr_0.7fr] md:items-center"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">
+                        {new Date(complaint.waktuKejadian).toLocaleDateString(
+                          "id-ID"
+                        )}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {new Date(complaint.waktuKejadian).toLocaleTimeString(
+                          "id-ID"
+                        )}
+                      </p>
                     </div>
-
-                    <div className="grid gap-3 sm:grid-cols-2 text-xs">
-                      <div className="bg-muted/30 rounded-xl p-3 border border-border/40">
-                        <p className="font-semibold text-foreground flex items-center gap-1.5 mb-1.5">
-                          <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
-                          Gejala
-                        </p>
-                        <p className="leading-relaxed text-muted-foreground">
-                          {complaint.gejala}
-                        </p>
-                      </div>
-                      <div className="bg-muted/30 rounded-xl p-3 border border-border/40">
-                        <p className="font-semibold text-foreground flex items-center gap-1.5 mb-1.5">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                          Tindakan Awal
-                        </p>
-                        <p className="leading-relaxed text-muted-foreground">
-                          {complaint.tindakan}
-                        </p>
-                      </div>
-                    </div>
-                  </article>
-                ))
-              : null}
+                    <span className="inline-flex w-fit rounded-full border bg-rose-500/10 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300">
+                      {complaint.jumlahSiswa}
+                    </span>
+                    <p className="line-clamp-2 text-sm text-muted-foreground">
+                      {complaint.gejala}
+                    </p>
+                    <p className="line-clamp-2 text-sm text-muted-foreground">
+                      {complaint.tindakan}
+                    </p>
+                    <span className="text-sm text-muted-foreground">
+                      {complaint.batchId ? "Ada" : "-"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
+        ) : null}
       </section>
     </DashboardShell>
   )

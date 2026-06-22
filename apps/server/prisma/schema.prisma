@@ -5,6 +5,7 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum UserRole {
@@ -14,7 +15,7 @@ enum UserRole {
 }
 
 model User {
-  id           String   @id @default(uuid())
+  id           String   @id @default(uuid()) @db.Uuid
   username     String   @unique
   passwordHash String   @map("password_hash")
   role         UserRole @default(SPPG)
@@ -60,16 +61,16 @@ enum ReceivingStatus {
 }
 
 model KitchenChecklist {
-  id             String   @id @default(uuid())
-  schoolId       String
-  apdPhoto       String
-  alatPhoto      String
-  kebersihanPhoto String
-  kondisiDapur   String
-  timestamp      DateTime
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id               String   @id @default(uuid())
+  apdPhoto         String   @map("apd_photo")
+  alatPhoto        String   @map("alat_photo")
+  kebersihanPhoto  String   @map("kebersihan_photo")
+  kondisiDapur     String   @map("kondisi_dapur")
+  timestamp        DateTime
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
+  @@index([timestamp], map: "kitchen_checklists_timestamp_idx")
   @@map("kitchen_checklists")
 }
 
@@ -112,6 +113,7 @@ model Distribution {
 model FoodReport {
   id              String           @id @default(uuid())
   kategori        ReportCategory
+  kategoriLainnya String?          @map("kategori_lainnya")
   deskripsi       String
   sekolahId       String
   batchId         String?

@@ -21,4 +21,14 @@ export const env = {
     .map((origin) => origin.trim())
     .filter(Boolean),
   jwtSecret: required("JWT_SECRET"),
+  cloudinary:
+    process.env.CLOUDINARY_CLOUD_NAME &&
+    process.env.CLOUDINARY_API_KEY &&
+    process.env.CLOUDINARY_API_SECRET
+      ? {
+          cloudName: process.env.CLOUDINARY_CLOUD_NAME,
+          apiKey: process.env.CLOUDINARY_API_KEY,
+          apiSecret: process.env.CLOUDINARY_API_SECRET,
+        }
+      : null,
 }

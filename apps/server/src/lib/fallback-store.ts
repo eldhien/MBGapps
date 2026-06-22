@@ -2,7 +2,6 @@ import { FoodReportStatus, type ReportCategory } from "@prisma/client"
 
 type KitchenChecklistRecord = {
   id: string
-  schoolId: string
   apdPhoto: string
   alatPhoto: string
   kebersihanPhoto: string
@@ -15,6 +14,7 @@ type KitchenChecklistRecord = {
 type FoodReportRecord = {
   id: string
   kategori: ReportCategory
+  kategoriLainnya: string | null
   deskripsi: string
   sekolahId: string
   batchId: string | null
@@ -45,12 +45,8 @@ function sortByDateDesc<T extends { createdAt: Date }>(items: T[]) {
   return [...items].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
 }
 
-export function listFallbackKitchenChecklists(schoolId?: string) {
-  const items = schoolId
-    ? fallbackStore.kitchenChecklists.filter((item) => item.schoolId === schoolId)
-    : fallbackStore.kitchenChecklists
-
-  return sortByDateDesc(items)
+export function listFallbackKitchenChecklists() {
+  return sortByDateDesc(fallbackStore.kitchenChecklists)
 }
 
 export function createFallbackKitchenChecklist(
@@ -66,6 +62,43 @@ export function createFallbackKitchenChecklist(
 
   fallbackStore.kitchenChecklists.unshift(item)
   return item
+}
+
+export function updateFallbackKitchenChecklist(
+  id: string,
+  data: Pick<
+    KitchenChecklistRecord,
+    "alatPhoto" | "apdPhoto" | "kebersihanPhoto" | "kondisiDapur"
+  >
+) {
+  const item = fallbackStore.kitchenChecklists.find(
+    (checklist) => checklist.id === id
+  )
+
+  if (!item) {
+    return null
+  }
+
+  item.apdPhoto = data.apdPhoto
+  item.alatPhoto = data.alatPhoto
+  item.kebersihanPhoto = data.kebersihanPhoto
+  item.kondisiDapur = data.kondisiDapur
+  item.updatedAt = new Date()
+
+  return item
+}
+
+export function deleteFallbackKitchenChecklist(id: string) {
+  const itemIndex = fallbackStore.kitchenChecklists.findIndex(
+    (checklist) => checklist.id === id
+  )
+
+  if (itemIndex === -1) {
+    return false
+  }
+
+  fallbackStore.kitchenChecklists.splice(itemIndex, 1)
+  return true
 }
 
 export function listFallbackFoodReports(sekolahId?: string) {

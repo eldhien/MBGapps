@@ -24,6 +24,11 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { useAuth } from "@/features/auth/AuthProvider"
 import { formatRole, type UserRole } from "@/features/auth/types"
 import { api, type ManagedUser } from "@/lib/api"
+import {
+  getCachedPageData,
+  pageCacheKeys,
+  setCachedPageData,
+} from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 import {
   EyeIcon,
@@ -51,24 +56,18 @@ const initialForm: FormState = {
   username: "",
 }
 
-let usersCache: ManagedUser[] | null = null
-
-function cacheUsers(users: ManagedUser[]) {
-  usersCache = users
-  return users
-}
-
 export function UsersPage() {
   const { profile } = useAuth()
+  const cachedUsers = getCachedPageData<ManagedUser[]>(pageCacheKeys.users)
   const [alertMessage, setAlertMessage] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ManagedUser | null>(null)
   const [dialogError, setDialogError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(initialForm)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(!usersCache)
+  const [isLoading, setIsLoading] = useState(!cachedUsers)
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
-  const [users, setUsers] = useState<ManagedUser[]>(() => usersCache ?? [])
+  const [users, setUsers] = useState<ManagedUser[]>(() => cachedUsers ?? [])
 
   const isEditing = Boolean(form.id)
 
@@ -78,6 +77,8 @@ export function UsersPage() {
   )
 
   async function loadUsers() {
+    const usersCache = getCachedPageData<ManagedUser[]>(pageCacheKeys.users)
+
     if (usersCache) {
       setUsers(usersCache)
       setIsLoading(false)
@@ -89,7 +90,7 @@ export function UsersPage() {
 
     try {
       const response = await api.users.list()
-      setUsers(cacheUsers(response.users))
+      setUsers(setCachedPageData(pageCacheKeys.users, response.users))
     } catch (error) {
       setError(
         error instanceof Error ? error.message : "Gagal memuat pengguna."
@@ -142,7 +143,8 @@ export function UsersPage() {
           ...(form.password ? { password: form.password } : {}),
         })
         setUsers((currentUsers) =>
-          cacheUsers(
+          setCachedPageData(
+            pageCacheKeys.users,
             currentUsers.map((user) =>
               user.id === response.user.id ? response.user : user
             )
@@ -155,7 +157,12 @@ export function UsersPage() {
           role: form.role,
           username: form.username,
         })
-        setUsers((currentUsers) => cacheUsers([...currentUsers, response.user]))
+        setUsers((currentUsers) =>
+          setCachedPageData(pageCacheKeys.users, [
+            ...currentUsers,
+            response.user,
+          ])
+        )
         setAlertMessage("Pengguna berhasil dibuat.")
       }
 
@@ -177,7 +184,10 @@ export function UsersPage() {
     try {
       await api.users.delete(deleteTarget.id)
       setUsers((currentUsers) =>
-        cacheUsers(currentUsers.filter((user) => user.id !== deleteTarget.id))
+        setCachedPageData(
+          pageCacheKeys.users,
+          currentUsers.filter((user) => user.id !== deleteTarget.id)
+        )
       )
       setDeleteTarget(null)
       setAlertMessage("Pengguna berhasil dihapus.")

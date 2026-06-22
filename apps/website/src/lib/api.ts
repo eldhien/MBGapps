@@ -1,6 +1,8 @@
 import type { UserProfile, UserRole } from "@/features/auth/types"
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000"
+const API_URL = (
+  import.meta.env.VITE_API_URL || "http://localhost:4000"
+).replace(/\/$/, "")
 const TOKEN_KEY = "mbg_session"
 
 type AuthSession = {
@@ -48,6 +50,7 @@ export type FoodReportStatus = "PENDING" | "REVIEWED" | "RESOLVED"
 export type FoodReport = {
   id: string
   kategori: FoodReportCategory
+  kategoriLainnya: string | null
   deskripsi: string
   sekolahId: string
   batchId: string | null
@@ -70,7 +73,6 @@ export type StudentComplaint = {
 
 export type KitchenChecklist = {
   id: string
-  schoolId: string
   apdPhoto: string
   alatPhoto: string
   kebersihanPhoto: string
@@ -82,6 +84,7 @@ export type KitchenChecklist = {
 
 export type CreateFoodReportPayload = {
   kategori: FoodReportCategory
+  kategoriLainnya?: string | null
   deskripsi: string
   batchId?: string
 }
@@ -99,7 +102,16 @@ export type CreateKitchenChecklistPayload = {
   alatPhoto: string
   kebersihanPhoto: string
   kondisiDapur: string
-  timestamp: string
+}
+
+export type UploadKitchenChecklistPhotoPayload = {
+  field: string
+  photo: string
+}
+
+export type UploadedKitchenChecklistPhoto = {
+  publicId: string
+  url: string
 }
 
 async function request<T>(path: string, options: RequestInit = {}) {
@@ -232,13 +244,31 @@ export const api = {
   },
   kitchenChecklists: {
     list() {
-      return request<{ data: KitchenChecklist[] }>("/kitchen-checklist")
+      return request<{ data: KitchenChecklist[] }>("/cleanliness-reports")
+    },
+    uploadPhoto(payload: UploadKitchenChecklistPhotoPayload) {
+      return request<{ data: UploadedKitchenChecklistPhoto }>(
+        "/cleanliness-reports/photos",
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }
+      )
     },
     create(payload: CreateKitchenChecklistPayload) {
-      return request<{ data: KitchenChecklist }>("/kitchen-checklist", {
+      return request<{ data: KitchenChecklist }>("/cleanliness-reports", {
         method: "POST",
         body: JSON.stringify(payload),
       })
+    },
+    update(id: string, payload: CreateKitchenChecklistPayload) {
+      return request<{ data: KitchenChecklist }>(`/cleanliness-reports/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      })
+    },
+    async delete(id: string) {
+      await request<null>(`/cleanliness-reports/${id}`, { method: "DELETE" })
     },
   },
 }

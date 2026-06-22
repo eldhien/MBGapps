@@ -4,24 +4,25 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import type {
   BatchSummary,
+  DashboardAnalytics,
   FoodReport,
   FoodReportCategory,
 } from "@/lib/api"
 import { api } from "@/lib/api"
+import {
+  getCachedPageData,
+  pageCacheKeys,
+  setCachedPageData,
+} from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 import {
   AlertTriangleIcon,
-  CheckCircle2Icon,
-  ClipboardListIcon,
   ClockIcon,
-  FileWarningIcon,
   HelpCircleIcon,
   PackageXIcon,
-  ShieldAlertIcon,
   ThermometerIcon,
-  TimerResetIcon,
 } from "lucide-react"
-import { useEffect, useMemo, useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 
 const categoryOptions: { label: string; value: FoodReportCategory }[] = [
   { label: "Basi", value: "BASI" },
@@ -49,6 +50,7 @@ const categoryColors: Record<FoodReportCategory, string> = {
 
 const initialForm = {
   batchId: "",
+  kategoriLainnya: "",
   deskripsi: "",
   kategori: "BASI" as FoodReportCategory,
 }
@@ -57,10 +59,18 @@ function formatCategory(category: FoodReportCategory) {
   return categoryOptions.find((item) => item.value === category)?.label ?? category
 }
 
-export function FoodReportsPage() {
-  const [reports, setReports] = useState<FoodReport[]>([])
-  const [batches, setBatches] = useState<BatchSummary[]>([])
-  const [loading, setLoading] = useState(true)
+export function FoodReportsPage({
+  mode = "create",
+}: {
+  mode?: "create" | "history"
+}) {
+  const cachedReports = getCachedPageData<FoodReport[]>(
+    pageCacheKeys.foodReports
+  )
+  const cachedBatches = getCachedPageData<BatchSummary[]>(pageCacheKeys.batches)
+  const [reports, setReports] = useState<FoodReport[]>(cachedReports ?? [])
+  const [batches, setBatches] = useState<BatchSummary[]>(cachedBatches ?? [])
+  const [loading, setLoading] = useState(!cachedReports)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -70,7 +80,23 @@ export function FoodReportsPage() {
     void loadData()
   }, [])
 
-  const loadData = async () => {
+  const loadData = async (force = false) => {
+    if (!force) {
+      const reportsCache = getCachedPageData<FoodReport[]>(
+        pageCacheKeys.foodReports
+      )
+      const batchesCache = getCachedPageData<BatchSummary[]>(
+        pageCacheKeys.batches
+      )
+
+      if (reportsCache) {
+        setReports(reportsCache)
+        setBatches(batchesCache ?? [])
+        setLoading(false)
+        return
+      }
+    }
+
     setLoading(true)
     setError(null)
 
@@ -81,13 +107,20 @@ export function FoodReportsPage() {
       ])
 
       if (reportsResponse.status === "fulfilled") {
-        setReports(reportsResponse.value.data)
+        setReports(
+          setCachedPageData(
+            pageCacheKeys.foodReports,
+            reportsResponse.value.data
+          )
+        )
       } else {
         throw reportsResponse.reason
       }
 
       if (batchesResponse.status === "fulfilled") {
-        setBatches(batchesResponse.value.data)
+        setBatches(
+          setCachedPageData(pageCacheKeys.batches, batchesResponse.value.data)
+        )
       } else {
         setBatches([])
       }
@@ -104,23 +137,49 @@ export function FoodReportsPage() {
     setError(null)
     setSuccessMessage(null)
 
+    const customCategory = form.kategoriLainnya.trim()
+    const description = form.deskripsi.trim()
     const payload = {
       kategori: form.kategori,
-      deskripsi: form.deskripsi.trim(),
+      kategoriLainnya: form.kategori === "LAINNYA" ? customCategory : null,
+      deskripsi: description,
       ...(form.batchId ? { batchId: form.batchId } : {}),
     }
 
-    if (payload.deskripsi.length < 10) {
+    if (form.kategori === "LAINNYA" && customCategory.length < 3) {
+      setError("Isi kategori lainnya minimal 3 karakter.")
+      setSubmitting(false)
+      return
+    }
+
+    if (description.length < 10) {
       setError("Deskripsi minimal 10 karakter agar laporan mudah ditindaklanjuti.")
       setSubmitting(false)
       return
     }
 
     try {
-      await api.foodReports.create(payload)
+      const response = await api.foodReports.create(payload)
+      setReports((currentReports) =>
+        setCachedPageData(pageCacheKeys.foodReports, [
+          response.data,
+          ...currentReports,
+        ])
+      )
+
+      const dashboardCache = getCachedPageData<DashboardAnalytics>(
+        pageCacheKeys.dashboardAnalytics
+      )
+
+      if (dashboardCache) {
+        setCachedPageData(pageCacheKeys.dashboardAnalytics, {
+          ...dashboardCache,
+          totalFoodReports: dashboardCache.totalFoodReports + 1,
+        })
+      }
+
       setForm(initialForm)
       setSuccessMessage("Laporan masalah makanan berhasil dikirim.")
-      await loadData()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan.")
     } finally {
@@ -128,21 +187,11 @@ export function FoodReportsPage() {
     }
   }
 
-  const summary = useMemo(() => {
-    const pending = reports.filter((report) => report.status === "PENDING").length
-    const reviewed = reports.filter((report) => report.status === "REVIEWED").length
-    const resolved = reports.filter((report) => report.status === "RESOLVED").length
-
-    return {
-      pending,
-      resolved,
-      reviewed,
-      total: reports.length,
-    }
-  }, [reports])
+  const isCreatePage = mode === "create"
+  const pageTitle = isCreatePage ? "Buat Laporan Masalah" : "Riwayat Laporan"
 
   return (
-    <DashboardShell title="Laporan Masalah Makanan">
+    <DashboardShell title={pageTitle}>
       {successMessage ? (
         <AlertToast
           title="Berhasil"
@@ -159,71 +208,24 @@ export function FoodReportsPage() {
         />
       ) : null}
 
-      <Card className="overflow-hidden border-border/70 bg-gradient-to-br from-card via-card to-muted/60 relative">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
-        <CardContent className="grid gap-6 p-6 lg:grid-cols-[1.2fr_0.8fr] relative z-1">
-          <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-xs font-medium text-muted-foreground">
-              <FileWarningIcon className="size-4 text-amber-500 animate-pulse" />
-              Pelaporan Masalah Makanan Sekolah
-            </div>
-            <div className="space-y-2">
-              <h1 className="text-3xl font-bold tracking-tight">
-                Catat Masalah Makanan secara Terstruktur
-              </h1>
-              <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                Gunakan formulir di bawah untuk melaporkan makanan basi, kemasan rusak, pengiriman terlambat,
-                suhu yang tidak sesuai standar, atau insiden kualitas lainnya.
-              </p>
-            </div>
-          </div>
+      <section className="pb-1">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Laporan masalah
+          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {isCreatePage ? "Buat Laporan Masalah" : "Riwayat Laporan Masalah"}
+          </h1>
+          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+            {isCreatePage
+              ? "Laporkan masalah makanan dengan kategori, batch terkait, dan deskripsi singkat."
+              : "Pantau laporan yang sudah dikirim dan status tindak lanjutnya."}
+          </p>
+        </div>
+      </section>
 
-          <div className="grid gap-3 grid-cols-2">
-            {[
-              {
-                icon: ClipboardListIcon,
-                label: "Total Laporan",
-                value: summary.total,
-                color: "text-blue-500 bg-blue-500/10 dark:bg-blue-500/20 border-blue-500/20",
-              },
-              {
-                icon: TimerResetIcon,
-                label: "Menunggu",
-                value: summary.pending,
-                color: "text-slate-500 bg-slate-500/10 dark:bg-slate-500/20 border-slate-500/20",
-              },
-              {
-                icon: ShieldAlertIcon,
-                label: "Ditinjau",
-                value: summary.reviewed,
-                color: "text-amber-500 bg-amber-500/10 dark:bg-amber-500/20 border-amber-500/20",
-              },
-              {
-                icon: CheckCircle2Icon,
-                label: "Selesai",
-                value: summary.resolved,
-                color: "text-emerald-500 bg-emerald-500/10 dark:bg-emerald-500/20 border-emerald-500/20",
-              },
-            ].map((item) => {
-              const Icon = item.icon
-
-              return (
-                <div key={item.label} className="rounded-2xl border bg-background/80 p-4 hover:shadow-xs transition-shadow">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <div className={`p-1 rounded-md ${item.color}`}>
-                      <Icon className="size-3.5" />
-                    </div>
-                    <span>{item.label}</span>
-                  </div>
-                  <p className="mt-2.5 text-xl font-bold leading-none">{item.value}</p>
-                </div>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      <section className="grid gap-6 xl:grid-cols-[1fr_1.1fr]">
+      <section className="grid gap-6">
+        {isCreatePage ? (
         <Card className="border-border/70 bg-card">
           <CardHeader>
             <CardTitle className="text-xl">Buat Laporan Masalah Makanan</CardTitle>
@@ -253,6 +255,10 @@ export function FoodReportsPage() {
                           setForm((current) => ({
                             ...current,
                             kategori: item.value,
+                            kategoriLainnya:
+                              item.value === "LAINNYA"
+                                ? current.kategoriLainnya
+                                : "",
                           }))
                         }
                       >
@@ -278,6 +284,23 @@ export function FoodReportsPage() {
                   })}
                 </div>
               </div>
+
+              {form.kategori === "LAINNYA" ? (
+                <label className="grid gap-2 text-sm font-medium">
+                  Kategori Lainnya
+                  <input
+                    className="h-11 rounded-xl border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    placeholder="Contoh: porsi kurang, rasa terlalu asin, kemasan tertukar"
+                    value={form.kategoriLainnya}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        kategoriLainnya: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              ) : null}
 
               <label className="grid gap-2 text-sm font-medium">
                 Batch Terkait
@@ -321,25 +344,29 @@ export function FoodReportsPage() {
             </form>
           </CardContent>
         </Card>
+        ) : null}
 
+        {!isCreatePage ? (
         <Card className="border-border/70 bg-card">
           <CardHeader>
             <CardTitle className="text-xl">Riwayat Laporan</CardTitle>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Klik dropdown untuk melihat daftar laporan terkirim beserta status penyelesaiannya.
+              Daftar laporan yang sudah dikirim beserta status tindak lanjutnya.
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
             {loading ? (
-              <div className="relative pl-6 border-l border-border/80 space-y-6 ml-2 py-2">
+              <div className="overflow-hidden rounded-xl border">
                 {Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className="relative rounded-2xl border p-5 space-y-3">
-                    <div className="absolute -left-[31px] top-7 flex h-4 w-4 items-center justify-center rounded-full bg-background border-2 border-border">
-                      <div className="h-1.5 w-1.5 rounded-full bg-muted" />
-                    </div>
+                  <div
+                    key={index}
+                    className="grid gap-3 border-b p-4 last:border-0 md:grid-cols-[0.9fr_0.9fr_1.6fr_0.7fr_0.8fr]"
+                  >
                     <Skeleton className="h-5 w-32" />
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-5/6" />
+                    <Skeleton className="h-5 w-28" />
+                    <Skeleton className="h-5 w-full" />
+                    <Skeleton className="h-5 w-20" />
+                    <Skeleton className="h-5 w-24" />
                   </div>
                 ))}
               </div>
@@ -352,73 +379,79 @@ export function FoodReportsPage() {
             ) : null}
 
             {!loading && reports.length > 0 ? (
-              <div className="relative pl-6 border-l border-border/80 space-y-6 ml-2 py-2">
+              <div className="overflow-hidden rounded-xl border">
+                <div className="hidden grid-cols-[0.9fr_0.9fr_1.6fr_0.7fr_0.8fr] gap-3 border-b bg-muted/40 px-4 py-3 text-xs font-semibold text-muted-foreground md:grid">
+                  <span>Tanggal</span>
+                  <span>Kategori</span>
+                  <span>Deskripsi</span>
+                  <span>Batch</span>
+                  <span>Status</span>
+                </div>
                 {reports.map((report) => {
                   const statusConfig = {
                     PENDING: {
                       bg: "bg-slate-500/10 text-slate-800 dark:text-slate-300 border-slate-500/20",
-                      dotBg: "bg-slate-500",
                       label: "Menunggu",
                     },
                     REVIEWED: {
                       bg: "bg-amber-500/10 text-amber-800 dark:text-amber-300 border-amber-500/20",
-                      dotBg: "bg-amber-500",
                       label: "Ditinjau",
                     },
                     RESOLVED: {
                       bg: "bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border-emerald-500/20",
-                      dotBg: "bg-emerald-500",
                       label: "Selesai",
                     },
                   }[report.status] ?? {
                     bg: "bg-slate-500/10 text-slate-700 border-slate-500/20",
-                    dotBg: "bg-slate-500",
                     label: report.status,
                   }
 
                   const CatIcon = categoryIcons[report.kategori] || HelpCircleIcon
 
                   return (
-                    <article key={report.id} className="relative bg-card rounded-2xl border p-5 space-y-3">
-                      <div className="absolute -left-[31px] top-7 flex h-4 w-4 items-center justify-center rounded-full bg-background border-2 border-border z-1">
-                        <div className={`h-1.5 w-1.5 rounded-full ${statusConfig.dotBg}`} />
+                    <div
+                      key={report.id}
+                      className="grid gap-3 border-b p-4 last:border-0 md:grid-cols-[0.9fr_0.9fr_1.6fr_0.7fr_0.8fr] md:items-center"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">
+                          {new Date(report.createdAt).toLocaleDateString("id-ID")}
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {new Date(report.createdAt).toLocaleTimeString("id-ID")}
+                        </p>
                       </div>
-
-                      <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className={`rounded-lg p-1.5 border shrink-0 ${categoryColors[report.kategori]}`}>
-                            <CatIcon className="size-4" />
-                          </div>
-                          <div>
-                            <h3 className="font-semibold text-sm leading-none text-foreground">{formatCategory(report.kategori)}</h3>
-                            <p className="text-[10px] text-muted-foreground mt-1.5">
-                              {new Date(report.createdAt).toLocaleString("id-ID")}
-                            </p>
-                          </div>
+                      <div className="flex items-center gap-2">
+                        <div className={`rounded-md border p-1.5 ${categoryColors[report.kategori]}`}>
+                          <CatIcon className="size-4" />
                         </div>
+                        <span className="text-sm font-medium">
+                          {report.kategori === "LAINNYA" && report.kategoriLainnya
+                            ? report.kategoriLainnya
+                            : formatCategory(report.kategori)}
+                        </span>
+                      </div>
+                      <p className="line-clamp-2 text-sm text-muted-foreground">
+                        {report.deskripsi}
+                      </p>
+                      <span className="text-sm text-muted-foreground">
+                        {report.batchId ? "Ada" : "-"}
+                      </span>
+                      <div>
                         <span
-                          className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusConfig.bg}`}
+                          className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusConfig.bg}`}
                         >
                           {statusConfig.label}
                         </span>
                       </div>
-
-                      <p className="text-xs leading-relaxed text-muted-foreground">
-                        {report.deskripsi}
-                      </p>
-
-                      <div className="flex flex-wrap gap-2 text-[10px] text-muted-foreground border-t pt-3 mt-1">
-                        <span className="rounded-full bg-muted/60 px-2.5 py-1 font-medium border">
-                          Batch: {report.batchId ? "Tersambung" : "Belum dipilih"}
-                        </span>
-                      </div>
-                    </article>
+                    </div>
                   )
                 })}
               </div>
             ) : null}
           </CardContent>
         </Card>
+        ) : null}
       </section>
     </DashboardShell>
   )

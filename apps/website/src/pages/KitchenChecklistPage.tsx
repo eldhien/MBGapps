@@ -1,20 +1,45 @@
 import { AlertToast } from "@/components/ui/alert-toast"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import type { KitchenChecklist } from "@/lib/api"
 import { api } from "@/lib/api"
+import {
+  getCachedPageData,
+  pageCacheKeys,
+  setCachedPageData,
+} from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 import {
   CameraIcon,
   CheckCircle2Icon,
-  Clock3Icon,
+  EyeIcon,
   ImageUpIcon,
   ShieldCheckIcon,
+  TriangleAlertIcon,
   Trash2Icon,
   UploadIcon,
 } from "lucide-react"
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react"
+import { Link } from "react-router-dom"
 
 type PhotoField = "apdPhoto" | "alatPhoto" | "kebersihanPhoto"
 
@@ -23,13 +48,13 @@ type FormState = {
   alatPhoto: string
   kebersihanPhoto: string
   kondisiDapur: string
-  timestamp: string
 }
 
 type FileMeta = {
   dimensions: string
   name: string
   sizeLabel: string
+  url: string
 }
 
 type FileMetaState = Record<PhotoField, FileMeta | null>
@@ -38,18 +63,11 @@ const maxOriginalFileSize = 8 * 1024 * 1024
 const maxCompressedFileSize = 450 * 1024
 const maxImageDimension = 1600
 
-function getCurrentDateTimeLocal() {
-  const now = new Date()
-  const offsetMs = now.getTimezoneOffset() * 60_000
-  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 16)
-}
-
 const initialForm: FormState = {
   apdPhoto: "",
   alatPhoto: "",
   kebersihanPhoto: "",
   kondisiDapur: "",
-  timestamp: getCurrentDateTimeLocal(),
 }
 
 const initialFileMeta: FileMetaState = {
@@ -62,7 +80,7 @@ function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result ?? ""))
-    reader.onerror = () => reject(new Error("Gagal membaca file gambar."))
+    reader.onerror = () => reject(new Error("Foto belum bisa dibaca. Coba pilih foto lain."))
     reader.readAsDataURL(file)
   })
 }
@@ -71,7 +89,7 @@ function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image()
     image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error("File gambar tidak bisa diproses."))
+    image.onerror = () => reject(new Error("Foto belum bisa diproses. Coba pilih foto lain."))
     image.src = src
   })
 }
@@ -87,13 +105,24 @@ function estimateDataUrlBytes(dataUrl: string) {
   return Math.ceil((base64.length * 3) / 4)
 }
 
+function getWeekRange(date = new Date()) {
+  const start = new Date(date)
+  start.setHours(0, 0, 0, 0)
+  start.setDate(start.getDate() - ((start.getDay() + 6) % 7))
+
+  const end = new Date(start)
+  end.setDate(start.getDate() + 7)
+
+  return { end, start }
+}
+
 async function compressImage(file: File) {
   if (!file.type.startsWith("image/")) {
-    throw new Error("File harus berupa gambar.")
+    throw new Error("Pilih foto dalam format gambar.")
   }
 
   if (file.size > maxOriginalFileSize) {
-    throw new Error("Ukuran file asli terlalu besar. Maksimal 8 MB per foto.")
+    throw new Error("Ukuran foto terlalu besar. Maksimal 8 MB per foto.")
   }
 
   const sourceDataUrl = await readFileAsDataUrl(file)
@@ -108,7 +137,7 @@ async function compressImage(file: File) {
 
   const context = canvas.getContext("2d")
   if (!context) {
-    throw new Error("Browser tidak mendukung proses kompresi gambar.")
+    throw new Error("Foto belum bisa disiapkan di perangkat ini. Coba gunakan foto lain.")
   }
 
   context.drawImage(image, 0, 0, width, height)
@@ -127,14 +156,38 @@ async function compressImage(file: File) {
 
   return {
     dataUrl: bestDataUrl,
-    dimensions: `${width}×${height}`,
+    dimensions: `${width}x${height}`,
     sizeLabel: formatBytes(estimateDataUrlBytes(bestDataUrl)),
   }
 }
 
-export function KitchenChecklistPage() {
-  const [checklists, setChecklists] = useState<KitchenChecklist[]>([])
-  const [loading, setLoading] = useState(true)
+async function uploadChecklistPhoto(field: PhotoField, file: File) {
+  const processed = await compressImage(file)
+  const upload = await api.kitchenChecklists.uploadPhoto({
+    field,
+    photo: processed.dataUrl,
+  })
+
+  return {
+    dimensions: processed.dimensions,
+    name: file.name,
+    sizeLabel: processed.sizeLabel,
+    url: upload.data.url,
+  }
+}
+
+export function KitchenChecklistPage({
+  mode = "upload",
+}: {
+  mode?: "history" | "upload"
+}) {
+  const cachedChecklists = getCachedPageData<KitchenChecklist[]>(
+    pageCacheKeys.kitchenChecklists
+  )
+  const [checklists, setChecklists] = useState<KitchenChecklist[]>(
+    cachedChecklists ?? []
+  )
+  const [loading, setLoading] = useState(!cachedChecklists)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -142,18 +195,43 @@ export function KitchenChecklistPage() {
   const [form, setForm] = useState<FormState>(initialForm)
   const [fileMeta, setFileMeta] = useState<FileMetaState>(initialFileMeta)
   const [fileInputKey, setFileInputKey] = useState(0)
+  const [editTarget, setEditTarget] = useState<KitchenChecklist | null>(null)
+  const [editForm, setEditForm] = useState<FormState>(initialForm)
+  const [editFileMeta, setEditFileMeta] =
+    useState<FileMetaState>(initialFileMeta)
+  const [editFileInputKey, setEditFileInputKey] = useState(0)
+  const [editProcessingField, setEditProcessingField] =
+    useState<PhotoField | null>(null)
+  const [editSubmitting, setEditSubmitting] = useState(false)
+  const [viewTarget, setViewTarget] = useState<KitchenChecklist | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<KitchenChecklist | null>(null)
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false)
 
   useEffect(() => {
     void loadChecklists()
   }, [])
 
-  const loadChecklists = async () => {
+  const loadChecklists = async (force = false) => {
+    if (!force) {
+      const checklistsCache = getCachedPageData<KitchenChecklist[]>(
+        pageCacheKeys.kitchenChecklists
+      )
+
+      if (checklistsCache) {
+        setChecklists(checklistsCache)
+        setLoading(false)
+        return
+      }
+    }
+
     setLoading(true)
     setError(null)
 
     try {
       const response = await api.kitchenChecklists.list()
-      setChecklists(response.data)
+      setChecklists(
+        setCachedPageData(pageCacheKeys.kitchenChecklists, response.data)
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan.")
     } finally {
@@ -184,25 +262,95 @@ export function KitchenChecklistPage() {
     setError(null)
 
     try {
-      const processed = await compressImage(file)
+      const uploadedPhoto = await uploadChecklistPhoto(field, file)
+
       setForm((current) => ({
         ...current,
-        [field]: processed.dataUrl,
+        [field]: uploadedPhoto.url,
       }))
       setFileMeta((current) => ({
         ...current,
-        [field]: {
-          name: file.name,
-          sizeLabel: processed.sizeLabel,
-          dimensions: processed.dimensions,
-        },
+        [field]: uploadedPhoto,
       }))
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Gagal memproses foto.")
+      setError(uploadError instanceof Error ? uploadError.message : "Foto belum bisa disiapkan.")
       event.target.value = ""
     } finally {
       setProcessingField(null)
     }
+  }
+
+  const handleEditPhotoChange = async (
+    field: PhotoField,
+    event: ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = event.target.files?.[0]
+
+    if (!file) {
+      return
+    }
+
+    setEditProcessingField(field)
+    setError(null)
+
+    try {
+      const uploadedPhoto = await uploadChecklistPhoto(field, file)
+
+      setEditForm((current) => ({
+        ...current,
+        [field]: uploadedPhoto.url,
+      }))
+      setEditFileMeta((current) => ({
+        ...current,
+        [field]: uploadedPhoto,
+      }))
+    } catch (uploadError) {
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Foto belum bisa disiapkan."
+      )
+      event.target.value = ""
+    } finally {
+      setEditProcessingField(null)
+    }
+  }
+
+  function openEditReport(report: KitchenChecklist) {
+    setEditTarget(report)
+    setEditForm({
+      apdPhoto: report.apdPhoto,
+      alatPhoto: report.alatPhoto,
+      kebersihanPhoto: report.kebersihanPhoto,
+      kondisiDapur: report.kondisiDapur,
+    })
+    setEditFileMeta({
+      apdPhoto: {
+        dimensions: "Tersimpan",
+        name: "Foto APD tersimpan",
+        sizeLabel: "Foto lama",
+        url: report.apdPhoto,
+      },
+      alatPhoto: {
+        dimensions: "Tersimpan",
+        name: "Foto alat tersimpan",
+        sizeLabel: "Foto lama",
+        url: report.alatPhoto,
+      },
+      kebersihanPhoto: {
+        dimensions: "Tersimpan",
+        name: "Foto kebersihan tersimpan",
+        sizeLabel: "Foto lama",
+        url: report.kebersihanPhoto,
+      },
+    })
+    setEditFileInputKey((value) => value + 1)
+  }
+
+  function closeEditReport() {
+    setEditTarget(null)
+    setEditForm(initialForm)
+    setEditFileMeta(initialFileMeta)
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -216,31 +364,31 @@ export function KitchenChecklistPage() {
       alatPhoto: form.alatPhoto,
       kebersihanPhoto: form.kebersihanPhoto,
       kondisiDapur: form.kondisiDapur.trim(),
-      timestamp: form.timestamp,
     }
 
     if (
       !payload.apdPhoto ||
       !payload.alatPhoto ||
       !payload.kebersihanPhoto ||
-      !payload.kondisiDapur ||
-      !payload.timestamp
+      !payload.kondisiDapur
     ) {
-      setError("Lengkapi tiga foto, timestamp, dan kondisi dapur.")
+      setError("Lengkapi tiga foto dan kondisi dapur.")
       setSubmitting(false)
       return
     }
 
     try {
-      await api.kitchenChecklists.create(payload)
-      setForm({
-        ...initialForm,
-        timestamp: getCurrentDateTimeLocal(),
-      })
+      const response = await api.kitchenChecklists.create(payload)
+      setChecklists((currentChecklists) =>
+        setCachedPageData(pageCacheKeys.kitchenChecklists, [
+          response.data,
+          ...currentChecklists,
+        ])
+      )
+      setForm(initialForm)
       setFileMeta(initialFileMeta)
       setFileInputKey((value) => value + 1)
-      setSuccessMessage("Checklist kebersihan dapur berhasil disimpan.")
-      await loadChecklists()
+      setSuccessMessage("Laporan kebersihan berhasil disimpan.")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan.")
     } finally {
@@ -248,28 +396,98 @@ export function KitchenChecklistPage() {
     }
   }
 
-  const summary = useMemo(() => {
-    const latestItem = checklists[0]
-    const latestDate = latestItem ? new Date(latestItem.timestamp) : null
-    const latestLabel = latestDate
-      ? latestDate.toLocaleString("id-ID")
-      : "Belum ada checklist"
-    const weekDiff = latestDate
-      ? Math.floor((Date.now() - latestDate.getTime()) / (7 * 24 * 60 * 60 * 1000))
-      : null
+  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
 
-    return {
-      latestLabel,
-      storageHint: "Foto otomatis dikompres sebelum dikirim agar upload lebih stabil.",
-      total: checklists.length,
-      weeklyStatus:
-        weekDiff === null
-          ? "Belum ada data minggu ini"
-          : weekDiff < 1
-            ? "Sudah ada upload minggu ini"
-            : "Perlu upload checklist minggu ini",
+    if (!editTarget) {
+      return
     }
+
+    setEditSubmitting(true)
+    setError(null)
+    setSuccessMessage(null)
+
+    const payload = {
+      apdPhoto: editForm.apdPhoto,
+      alatPhoto: editForm.alatPhoto,
+      kebersihanPhoto: editForm.kebersihanPhoto,
+      kondisiDapur: editForm.kondisiDapur.trim(),
+    }
+
+    if (
+      !payload.apdPhoto ||
+      !payload.alatPhoto ||
+      !payload.kebersihanPhoto ||
+      !payload.kondisiDapur
+    ) {
+      setError("Lengkapi tiga foto dan kondisi dapur.")
+      setEditSubmitting(false)
+      return
+    }
+
+    try {
+      const response = await api.kitchenChecklists.update(editTarget.id, payload)
+      setChecklists((currentChecklists) =>
+        setCachedPageData(
+          pageCacheKeys.kitchenChecklists,
+          currentChecklists.map((item) =>
+            item.id === response.data.id ? response.data : item
+          )
+        )
+      )
+      setSuccessMessage("Laporan kebersihan berhasil diperbarui.")
+      closeEditReport()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan.")
+    } finally {
+      setEditSubmitting(false)
+    }
+  }
+
+  const handleDeleteReport = async () => {
+    if (!deleteTarget) {
+      return
+    }
+
+    setDeleteSubmitting(true)
+    setError(null)
+    setSuccessMessage(null)
+
+    try {
+      await api.kitchenChecklists.delete(deleteTarget.id)
+      setChecklists((currentChecklists) =>
+        setCachedPageData(
+          pageCacheKeys.kitchenChecklists,
+          currentChecklists.filter((item) => item.id !== deleteTarget.id)
+        )
+      )
+      setSuccessMessage("Laporan kebersihan berhasil dihapus.")
+      setDeleteTarget(null)
+
+      if (editTarget?.id === deleteTarget.id) {
+        closeEditReport()
+      }
+
+      if (viewTarget?.id === deleteTarget.id) {
+        setViewTarget(null)
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Terjadi kesalahan.")
+    } finally {
+      setDeleteSubmitting(false)
+    }
+  }
+
+  const currentWeekReport = useMemo(() => {
+    const currentWeek = getWeekRange()
+
+    return checklists.find((item) => {
+      const reportDate = new Date(item.timestamp)
+
+      return reportDate >= currentWeek.start && reportDate < currentWeek.end
+    })
   }, [checklists])
+  const hasCurrentWeekReport = Boolean(currentWeekReport)
 
   const photoFields: {
     field: PhotoField
@@ -292,9 +510,13 @@ export function KitchenChecklistPage() {
       helper: "Tunjukkan kondisi lantai, meja, dan area produksi.",
     },
   ]
+  const isUploadPage = mode === "upload"
+  const pageTitle = isUploadPage
+    ? "Upload Laporan"
+    : "Riwayat Laporan"
 
   return (
-    <DashboardShell title="Checklist Kebersihan">
+    <DashboardShell title={pageTitle}>
       {successMessage ? (
         <AlertToast
           title="Berhasil"
@@ -311,70 +533,58 @@ export function KitchenChecklistPage() {
         />
       ) : null}
 
-      <Card className="overflow-hidden border-border/70 bg-gradient-to-br from-card via-card to-muted/60">
-        <CardContent className="grid gap-6 p-6 lg:grid-cols-[1.25fr_0.95fr]">
-          <div className="space-y-4">
-            <div className="inline-flex items-center gap-2 rounded-full border bg-background px-3 py-1 text-xs text-muted-foreground">
-              <ShieldCheckIcon className="size-4" />
-              Checklist mingguan dapur digital
-            </div>
-            <div className="space-y-2">
-              <h1 className="text-3xl font-semibold tracking-tight">
-                Upload foto checklist sekarang lebih aman dan ringan
-              </h1>
-              <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-                Foto APD, alat, dan kebersihan akan diperkecil otomatis sebelum
-                dikirim. Ini mengurangi risiko upload gagal saat file asli terlalu besar.
-              </p>
-            </div>
-          </div>
+      <section className="pb-1">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Laporan mingguan
+          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {isUploadPage ? "Upload Laporan" : "Riwayat Laporan"}
+          </h1>
+          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+            {isUploadPage
+              ? "Tambahkan foto APD, alat, dan kebersihan area dapur. Foto akan disiapkan otomatis agar mudah dikirim."
+              : "Lihat dokumentasi laporan kebersihan dapur yang sudah tersimpan."}
+          </p>
+        </div>
+      </section>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            {[
-              {
-                icon: CheckCircle2Icon,
-                label: "Total checklist",
-                value: summary.total,
-              },
-              {
-                icon: Clock3Icon,
-                label: "Upload terakhir",
-                value: loading ? "..." : summary.latestLabel,
-              },
-              {
-                icon: UploadIcon,
-                label: "Status mingguan",
-                value: loading ? "..." : summary.weeklyStatus,
-              },
-              {
-                icon: ImageUpIcon,
-                label: "Mode upload",
-                value: summary.storageHint,
-              },
-            ].map((item) => {
-              const Icon = item.icon
-
-              return (
-                <div key={item.label} className="rounded-2xl border bg-background/80 p-4">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Icon className="size-4" />
-                    {item.label}
-                  </div>
-                  <p className="mt-2 text-sm font-semibold leading-6">{item.value}</p>
-                </div>
-              )
-            })}
-          </div>
-        </CardContent>
-      </Card>
-
-      <section className="grid gap-6 xl:grid-cols-[1fr_1.15fr]">
+      <section className="grid gap-6">
+        {isUploadPage ? (
+        loading ? (
+          <Card className="border-border/70">
+            <CardContent className="p-5 text-sm text-muted-foreground">
+              Memeriksa laporan minggu ini...
+            </CardContent>
+          </Card>
+        ) : hasCurrentWeekReport ? (
+          <Card className="min-h-[calc(100svh-19rem)] border-border/70">
+            <CardContent className="flex min-h-[calc(100svh-19rem)] flex-col items-center justify-center gap-4 p-6 text-center">
+              <div>
+                <p className="text-base font-semibold">
+                  Laporan minggu ini sudah dikirim
+                </p>
+                <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+                  Laporan dibuat pada{" "}
+                  {currentWeekReport
+                    ? new Date(currentWeekReport.timestamp).toLocaleString(
+                        "id-ID"
+                      )
+                    : "-"}
+                  . Perubahan hanya bisa dilakukan melalui riwayat.
+                </p>
+              </div>
+              <Button asChild variant="outline">
+                <Link to="/cleanliness-reports/history">Buka riwayat</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : (
         <Card className="border-border/70">
           <CardHeader>
-            <CardTitle className="text-xl">Upload Checklist Mingguan</CardTitle>
+            <CardTitle className="text-xl">Upload Laporan Mingguan</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Foto besar akan dikompres otomatis. File asli sampai 8 MB masih bisa
-              dipilih, lalu diperkecil sebelum upload.
+              Pilih tiga foto pemeriksaan hari ini, lalu tambahkan catatan kondisi dapur sebelum menyimpan laporan.
             </p>
           </CardHeader>
           <CardContent>
@@ -427,7 +637,7 @@ export function KitchenChecklistPage() {
                               className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1.5 text-white transition-opacity duration-200 cursor-pointer"
                             >
                               <CameraIcon className="size-5 animate-pulse" />
-                              <span className="text-xs font-medium">Ubah Foto</span>
+                              <span className="text-xs font-medium">Ubah foto</span>
                             </label>
                           </>
                         ) : (
@@ -439,7 +649,7 @@ export function KitchenChecklistPage() {
                               <CameraIcon className="size-5 text-muted-foreground" />
                             </div>
                             <span className="text-xs font-medium text-center px-2">
-                              {isProcessing ? "Memproses..." : "Pilih gambar"}
+                              {isProcessing ? "Menyiapkan foto..." : "Pilih foto"}
                             </span>
                           </label>
                         )}
@@ -458,12 +668,12 @@ export function KitchenChecklistPage() {
                           )}
                           <div className="overflow-hidden">
                             <p className="truncate font-medium">
-                              {meta?.name ?? "Belum ada file"}
+                              {meta?.name ?? "Belum ada foto"}
                             </p>
                             <p className="mt-0.5 text-[10px] opacity-80">
                               {meta
-                                ? `${meta.sizeLabel} · ${meta.dimensions}`
-                                : "Kompresi otomatis aktif"}
+                                ? `${meta.sizeLabel} - ${meta.dimensions}`
+                                : "Foto akan disiapkan otomatis"}
                             </p>
                           </div>
                         </div>
@@ -493,28 +703,11 @@ export function KitchenChecklistPage() {
                 })}
               </div>
 
-              <div className="grid gap-4 md:grid-cols-[0.95fr_1.05fr]">
-                <label className="grid gap-2 text-sm font-medium">
-                  Timestamp checklist
-                  <input
-                    className="h-11 rounded-xl border border-input bg-background px-3 text-sm shadow-xs outline-none input-focus-effect"
-                    type="datetime-local"
-                    value={form.timestamp}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        timestamp: event.target.value,
-                      }))
-                    }
-                  />
-                </label>
-
-                <div className="rounded-2xl border border-primary/10 bg-primary/5 p-4 text-xs leading-relaxed text-muted-foreground flex items-start gap-2.5">
+              <div className="rounded-2xl border border-primary/10 bg-primary/5 p-4 text-xs leading-relaxed text-muted-foreground flex items-start gap-2.5">
                   <ShieldCheckIcon className="size-5 text-primary shrink-0 mt-0.5" />
                   <p>
-                    <strong>Panduan Pemeriksaan:</strong> Pastikan foto yang diupload menampilkan kondisi nyata di hari pemeriksaan dengan pencahayaan yang cukup. Riwayat laporan akan langsung tersinkronisasi di sebelah kanan setelah disimpan.
+                    <strong>Panduan Pemeriksaan:</strong> Pastikan foto menampilkan kondisi nyata di hari pemeriksaan dengan pencahayaan yang cukup. Tanggal laporan otomatis memakai waktu saat tombol simpan ditekan.
                   </p>
-                </div>
               </div>
 
               <label className="grid gap-2 text-sm font-medium">
@@ -533,85 +726,284 @@ export function KitchenChecklistPage() {
               </label>
 
               <Button disabled={submitting || Boolean(processingField)} type="submit" className="w-full h-11 rounded-xl shadow-xs hover:shadow-md transition-all">
-                {submitting ? "Menyimpan checklist..." : "Simpan checklist"}
+                {submitting ? "Menyimpan laporan..." : "Simpan laporan"}
               </Button>
             </form>
           </CardContent>
         </Card>
+        )
+        ) : null}
 
+        {!isUploadPage ? (
         <Card className="border-border/70">
           <CardHeader>
-            <CardTitle className="text-xl">Riwayat Checklist</CardTitle>
+            <CardTitle className="text-xl">Riwayat Laporan</CardTitle>
             <p className="text-sm text-muted-foreground">
-              Dokumentasi checklist kebersihan yang sudah tersimpan.
+              Dokumentasi laporan kebersihan yang sudah tersimpan.
             </p>
           </CardHeader>
           <CardContent className="grid gap-4">
-            {loading
-              ? Array.from({ length: 2 }).map((_, index) => (
-                  <div key={index} className="rounded-2xl border p-5 space-y-4">
+            {loading ? (
+              <div className="overflow-hidden rounded-xl border">
+                {Array.from({ length: 4 }).map((_, index) => (
+                  <div
+                    key={index}
+                    className="grid gap-3 border-b p-4 last:border-0 md:grid-cols-[1fr_1.3fr_0.7fr_1fr]"
+                  >
                     <Skeleton className="h-5 w-40" />
-                    <div className="grid gap-3 grid-cols-3">
-                      <Skeleton className="aspect-video w-full" />
-                      <Skeleton className="aspect-video w-full" />
-                      <Skeleton className="aspect-video w-full" />
-                    </div>
+                    <Skeleton className="h-5 w-full" />
+                    <Skeleton className="h-5 w-24" />
+                    <Skeleton className="h-9 w-full" />
                   </div>
-                ))
-              : null}
-
-            {!loading && checklists.length === 0 ? (
-              <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-                Belum ada checklist kebersihan yang tersimpan.
+                ))}
               </div>
             ) : null}
 
-            {!loading
-              ? checklists.map((item) => (
-                  <article key={item.id} className="rounded-2xl border bg-card p-5 hover-card-effect space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b pb-3">
-                      <div>
-                        <h3 className="font-semibold text-sm">Checklist Dapur</h3>
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          {new Date(item.timestamp).toLocaleString("id-ID")}
-                        </p>
-                      </div>
-                      <span className="rounded-full bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 px-2.5 py-1 text-[11px] font-medium border border-emerald-500/20 flex items-center gap-1">
-                        <CheckCircle2Icon className="size-3.5" />
-                        <span>Tersimpan</span>
-                      </span>
-                    </div>
+            {!loading && checklists.length === 0 ? (
+              <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                Belum ada laporan kebersihan yang tersimpan.
+              </div>
+            ) : null}
 
-                    <div className="grid gap-3 grid-cols-3">
-                      {[
-                        { label: "APD", value: item.apdPhoto },
-                        { label: "Alat", value: item.alatPhoto },
-                        { label: "Kebersihan", value: item.kebersihanPhoto },
-                      ].map((photo) => (
-                        <div key={photo.label} className="overflow-hidden rounded-xl border bg-muted/30">
-                          <div className="aspect-video w-full overflow-hidden">
-                            <img
-                              src={photo.value}
-                              alt={photo.label}
-                              className="h-full w-full object-cover hover:scale-105 transition-transform duration-300"
-                            />
-                          </div>
-                          <div className="bg-background border-t px-2 py-1.5 text-center text-[10px] font-semibold text-muted-foreground">
-                            {photo.label}
-                          </div>
-                        </div>
-                      ))}
+            {!loading && checklists.length > 0 ? (
+              <div className="overflow-hidden rounded-xl border">
+                <div className="hidden grid-cols-[1fr_1.3fr_0.7fr_1fr] gap-3 border-b bg-muted/40 px-4 py-3 text-xs font-semibold text-muted-foreground md:grid">
+                  <span>Tanggal</span>
+                  <span>Kondisi dapur</span>
+                  <span>Foto</span>
+                  <span className="text-right">Aksi</span>
+                </div>
+                {checklists.map((item) => (
+                  <div
+                    key={item.id}
+                    className="grid gap-3 border-b p-4 last:border-0 md:grid-cols-[1fr_1.3fr_0.7fr_1fr] md:items-center"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">
+                        {new Date(item.timestamp).toLocaleDateString("id-ID")}
+                      </p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {new Date(item.timestamp).toLocaleTimeString("id-ID")}
+                      </p>
                     </div>
-
-                    <p className="rounded-xl bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground border border-border/40">
-                      <strong>Kondisi: </strong>{item.kondisiDapur}
+                    <p className="line-clamp-2 text-sm text-muted-foreground">
+                      {item.kondisiDapur}
                     </p>
-                  </article>
-                ))
-              : null}
+                    <span className="inline-flex w-fit rounded-full border bg-muted/30 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                      3 foto
+                    </span>
+                    <div className="flex flex-wrap justify-start gap-2 md:justify-end">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setViewTarget(item)}
+                      >
+                        <EyeIcon />
+                        View
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEditReport(item)}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => setDeleteTarget(item)}
+                      >
+                        <Trash2Icon />
+                        Delete
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </CardContent>
         </Card>
+        ) : null}
       </section>
+
+      <Dialog
+        open={Boolean(editTarget)}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeEditReport()
+          }
+        }}
+      >
+        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Edit Laporan Kebersihan</DialogTitle>
+            <DialogDescription>
+              Perbarui foto atau kondisi dapur untuk laporan yang dipilih.
+            </DialogDescription>
+          </DialogHeader>
+
+          {editTarget ? (
+            <form className="grid gap-4" onSubmit={handleEditSubmit}>
+              <div className="grid gap-3 md:grid-cols-3">
+                {photoFields.map((item) => {
+                  const preview = editForm[item.field]
+                  const meta = editFileMeta[item.field]
+                  const inputId = `edit-${item.field}-${editFileInputKey}`
+                  const isProcessing = editProcessingField === item.field
+
+                  return (
+                    <div
+                      key={item.field}
+                      className="rounded-xl border bg-card p-3"
+                    >
+                      <p className="text-xs font-semibold">{item.label}</p>
+                      <input
+                        id={inputId}
+                        key={inputId}
+                        className="hidden"
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) =>
+                          void handleEditPhotoChange(item.field, event)
+                        }
+                      />
+                      <label
+                        htmlFor={inputId}
+                        className="mt-3 block cursor-pointer overflow-hidden rounded-lg border bg-muted/40"
+                      >
+                        <div className="aspect-video w-full">
+                          <img
+                            src={preview}
+                            alt={item.label}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                        <div className="border-t px-3 py-2 text-xs text-muted-foreground">
+                          {isProcessing
+                            ? "Menyiapkan foto..."
+                            : meta?.name ?? "Ganti foto"}
+                        </div>
+                      </label>
+                    </div>
+                  )
+                })}
+              </div>
+
+              <label className="grid gap-2 text-sm font-medium">
+                Kondisi dapur
+                <textarea
+                  className="min-h-28 rounded-xl border border-input bg-background px-3 py-3 text-sm shadow-xs outline-none input-focus-effect"
+                  value={editForm.kondisiDapur}
+                  onChange={(event) =>
+                    setEditForm((current) => ({
+                      ...current,
+                      kondisiDapur: event.target.value,
+                    }))
+                  }
+                />
+              </label>
+
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={closeEditReport}
+                >
+                  Batal
+                </Button>
+                <Button
+                  disabled={editSubmitting || Boolean(editProcessingField)}
+                  type="submit"
+                >
+                  {editSubmitting
+                    ? "Menyimpan perubahan..."
+                    : "Simpan perubahan"}
+                </Button>
+              </div>
+            </form>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(viewTarget)} onOpenChange={(open) => !open && setViewTarget(null)}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Detail Laporan Kebersihan</DialogTitle>
+            <DialogDescription>
+              {viewTarget
+                ? new Date(viewTarget.timestamp).toLocaleString("id-ID")
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {viewTarget ? (
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-3">
+                {[
+                  { label: "APD", value: viewTarget.apdPhoto },
+                  { label: "Alat", value: viewTarget.alatPhoto },
+                  { label: "Kebersihan", value: viewTarget.kebersihanPhoto },
+                ].map((photo) => (
+                  <div
+                    key={photo.label}
+                    className="overflow-hidden rounded-xl border bg-muted/30"
+                  >
+                    <div className="aspect-video w-full overflow-hidden">
+                      <img
+                        src={photo.value}
+                        alt={photo.label}
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                    <div className="border-t bg-background px-3 py-2 text-xs font-semibold text-muted-foreground">
+                      {photo.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-xl border bg-muted/20 p-4">
+                <p className="text-xs font-semibold text-muted-foreground">
+                  Kondisi dapur
+                </p>
+                <p className="mt-2 text-sm leading-6">{viewTarget.kondisiDapur}</p>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia>
+              <TriangleAlertIcon />
+            </AlertDialogMedia>
+            <AlertDialogTitle>Hapus laporan?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Laporan kebersihan ini akan dihapus permanen dari riwayat.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteSubmitting}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleteSubmitting}
+              onClick={(event) => {
+                event.preventDefault()
+                void handleDeleteReport()
+              }}
+            >
+              {deleteSubmitting ? "Menghapus..." : "Hapus"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardShell>
   )
 }

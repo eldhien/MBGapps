@@ -33,7 +33,7 @@ import {
   Trash2Icon,
   TriangleAlertIcon,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type FormEvent } from "react"
 import { Navigate } from "react-router-dom"
 
 const roles: UserRole[] = ["SUPER_ADMIN", "SPPG", "SEKOLAH"]
@@ -128,7 +128,7 @@ export function UsersPage() {
     setIsDialogOpen(true)
   }
 
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setAlertMessage(null)
     setDialogError(null)

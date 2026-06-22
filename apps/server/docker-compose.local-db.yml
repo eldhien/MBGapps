@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mbg-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mbg
+      POSTGRES_PASSWORD: mbg
+      POSTGRES_DB: mbg_app
+    ports:
+      - "54329:5432"
+    volumes:
+      - mbg_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  mbg_postgres_data:

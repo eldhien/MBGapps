@@ -19,6 +19,89 @@ export type ManagedUser = {
   createdAt: string
 }
 
+export type BatchSummary = {
+  id: string
+  batchIdUnik: string
+  namaMenu: string
+  waktuProduksi: string
+  status: string
+}
+
+export type DashboardAnalytics = {
+  totalBatches: number
+  totalDistributions: number
+  pendingDistributions: number
+  deliveredDistributions: number
+  totalFoodReports: number
+  totalStudentComplaints: number
+}
+
+export type FoodReportCategory =
+  | "BASI"
+  | "RUSAK"
+  | "TERLAMBAT"
+  | "SUHU_TIDAK_SESUAI"
+  | "LAINNYA"
+
+export type FoodReportStatus = "PENDING" | "REVIEWED" | "RESOLVED"
+
+export type FoodReport = {
+  id: string
+  kategori: FoodReportCategory
+  deskripsi: string
+  sekolahId: string
+  batchId: string | null
+  status: FoodReportStatus
+  createdAt: string
+  updatedAt: string
+}
+
+export type StudentComplaint = {
+  id: string
+  jumlahSiswa: number
+  gejala: string
+  waktuKejadian: string
+  tindakan: string
+  sekolahId: string
+  batchId: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export type KitchenChecklist = {
+  id: string
+  schoolId: string
+  apdPhoto: string
+  alatPhoto: string
+  kebersihanPhoto: string
+  timestamp: string
+  kondisiDapur: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type CreateFoodReportPayload = {
+  kategori: FoodReportCategory
+  deskripsi: string
+  batchId?: string
+}
+
+export type CreateStudentComplaintPayload = {
+  jumlahSiswa: number
+  gejala: string
+  waktuKejadian: string
+  tindakan: string
+  batchId?: string
+}
+
+export type CreateKitchenChecklistPayload = {
+  apdPhoto: string
+  alatPhoto: string
+  kebersihanPhoto: string
+  kondisiDapur: string
+  timestamp: string
+}
+
 async function request<T>(path: string, options: RequestInit = {}) {
   const token = getAccessToken()
   const headers = new Headers(options.headers)
@@ -33,6 +116,12 @@ async function request<T>(path: string, options: RequestInit = {}) {
     ...options,
     headers,
   })
+
+  if (response.status === 401) {
+    clearAccessToken()
+    window.location.href = "/login"
+    throw new Error("Sesi berakhir. Silakan login kembali.")
+  }
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as {
@@ -78,8 +167,13 @@ export const api = {
     return request<AuthResponse>("/auth/me")
   },
   async logout() {
-    await request<null>("/auth/logout", { method: "POST" })
-    clearAccessToken()
+    try {
+      await request<null>("/auth/logout", {
+        method: "POST",
+      })
+    } finally {
+      clearAccessToken()
+    }
   },
   users: {
     list() {
@@ -102,6 +196,49 @@ export const api = {
     },
     async delete(id: string) {
       await request<null>(`/users/${id}`, { method: "DELETE" })
+    },
+  },
+  batches: {
+    list() {
+      return request<{ data: BatchSummary[] }>("/batches")
+    },
+  },
+  dashboard: {
+    analytics() {
+      return request<{ data: DashboardAnalytics }>("/dashboard/analytics")
+    },
+  },
+  foodReports: {
+    list() {
+      return request<{ data: FoodReport[] }>("/food-reports")
+    },
+    create(payload: CreateFoodReportPayload) {
+      return request<{ data: FoodReport }>("/food-reports", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    },
+  },
+  studentComplaints: {
+    list() {
+      return request<{ data: StudentComplaint[] }>("/student-complaints")
+    },
+    create(payload: CreateStudentComplaintPayload) {
+      return request<{ data: StudentComplaint }>("/student-complaints", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    },
+  },
+  kitchenChecklists: {
+    list() {
+      return request<{ data: KitchenChecklist[] }>("/kitchen-checklist")
+    },
+    create(payload: CreateKitchenChecklistPayload) {
+      return request<{ data: KitchenChecklist }>("/kitchen-checklist", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
     },
   },
 }

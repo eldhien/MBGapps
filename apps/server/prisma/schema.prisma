@@ -5,7 +5,6 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 enum UserRole {
@@ -15,7 +14,7 @@ enum UserRole {
 }
 
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
+  id           String   @id @default(uuid())
   username     String   @unique
   passwordHash String   @map("password_hash")
   role         UserRole @default(SPPG)
@@ -23,4 +22,130 @@ model User {
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   @@map("users")
+}
+
+enum BatchStatus {
+  DRAFT
+  SCHEDULED
+  IN_PRODUCTION
+  DISTRIBUTED
+  CANCELLED
+}
+
+enum DistributionStatus {
+  PENDING
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+}
+
+enum FoodReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+}
+
+enum ReportCategory {
+  BASI
+  RUSAK
+  TERLAMBAT
+  SUHU_TIDAK_SESUAI
+  LAINNYA
+}
+
+enum ReceivingStatus {
+  PENDING
+  COMPLETED
+  REJECTED
+}
+
+model KitchenChecklist {
+  id             String   @id @default(uuid())
+  schoolId       String
+  apdPhoto       String
+  alatPhoto      String
+  kebersihanPhoto String
+  kondisiDapur   String
+  timestamp      DateTime
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("kitchen_checklists")
+}
+
+model Batch {
+  id              String      @id @default(uuid())
+  batchIdUnik     String      @unique @map("batch_id_unik")
+  namaMenu        String
+  jumlahPorsi     Int
+  komposisi       String
+  waktuProduksi   DateTime    @map("waktu_produksi")
+  driverId        String?
+  photoUrl        String?
+  status          BatchStatus @default(DRAFT)
+  sppgId          String?
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  distributions Distribution[]
+
+  @@map("batches")
+}
+
+model Distribution {
+  id             String            @id @default(uuid())
+  batchId        String
+  sekolahId      String
+  waktuKirim     DateTime?         @map("waktu_kirim")
+  jumlahPorsi    Int
+  status         DistributionStatus @default(PENDING)
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  batch Batch @relation(fields: [batchId], references: [id])
+
+  receivingReceipt ReceivingReceipt?
+
+  @@map("distributions")
+}
+
+model FoodReport {
+  id              String           @id @default(uuid())
+  kategori        ReportCategory
+  deskripsi       String
+  sekolahId       String
+  batchId         String?
+  status          FoodReportStatus @default(PENDING)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  @@map("food_reports")
+}
+
+model StudentComplaint {
+  id             String        @id @default(uuid())
+  jumlahSiswa    Int
+  gejala         String
+  waktuKejadian  DateTime      @map("waktu_kejadian")
+  tindakan       String
+  sekolahId      String
+  batchId        String?
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("student_complaints")
+}
+
+model ReceivingReceipt {
+  id               String        @id @default(uuid())
+  distributionId   String        @unique
+  status           ReceivingStatus @default(PENDING)
+  catatan          String?
+  timestamp        DateTime?
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  distribution Distribution @relation(fields: [distributionId], references: [id])
+
+  @@map("receiving_receipts")
 }

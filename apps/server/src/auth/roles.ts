@@ -1,4 +1,4 @@
-export const webRoles = ["SUPER_ADMIN", "SPPG", "SEKOLAH"] as const
+export const webRoles = ["SUPER_ADMIN", "SPPG", "SEKOLAH", "DRIVER"] as const
 
 export type WebRole = (typeof webRoles)[number]
 export type UserRole = WebRole

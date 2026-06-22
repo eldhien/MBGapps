@@ -7,12 +7,16 @@ import { ComingSoonPage } from "@/pages/ComingSoonPage"
 import { DashboardPage } from "@/pages/DashboardPage"
 import { LoginPage } from "@/pages/LoginPage"
 import { UsersPage } from "@/pages/UsersPage"
+import { BatchListPage } from "@/pages/batch/BatchListPage"
+import { BatchCreatePage } from "@/pages/batch/BatchCreatePage"
+import { BatchScanPage } from "@/pages/batch/BatchScanPage"
 
 export function App() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/batch-info/*" element={<BatchScanPage />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route
@@ -23,8 +27,24 @@ export function App() {
             </RoleRoute>
           }
         />
+        <Route
+          path="/batch"
+          element={
+            <RoleRoute>
+              <BatchListPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/batch/create"
+          element={
+            <RoleRoute allowedRoles={["SUPER_ADMIN", "SPPG"]}>
+              <BatchCreatePage />
+            </RoleRoute>
+          }
+        />
         {navigationPages
-          .filter((page) => !["dashboard", "users"].includes(page.key))
+          .filter((page) => !["dashboard", "users", "batch"].includes(page.key))
           .map((page) => (
             <Route
               key={page.key}

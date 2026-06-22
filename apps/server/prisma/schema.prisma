@@ -8,19 +8,159 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+model User {
+  id             String   @id(map: "user_profiles_pkey") @default(uuid()) @db.Uuid
+  username       String   @unique(map: "user_profiles_username_key")
+  passwordHash   String   @map("password_hash")
+  role           UserRole @default(SPPG)
+  petugasBatches BatchProduksi[] @relation("PetugasBatch")
+  driverBatches  BatchProduksi[] @relation("DriverBatch")
+  sekolahBatches BatchSekolah[]  @relation("SekolahBatch")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
 enum UserRole {
   SUPER_ADMIN
   SPPG
   SEKOLAH
+  DRIVER
 }
 
-model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  username     String   @unique
-  passwordHash String   @map("password_hash")
-  role         UserRole @default(SPPG)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+model DapurDailyCapacity {
+  id        String   @id @default(uuid()) @db.Uuid
+  date      DateTime @unique @db.Date
+  capacity  Int
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
-  @@map("users")
+  @@map("dapur_daily_capacities")
+}
+
+enum MenuCategory {
+  MENU_UTAMA
+  LAUK
+  SAYUR
+  BUAH
+  SUSU_SNACK
+}
+
+enum BatchStatus {
+  DRAFT
+  DIPRODUKSI
+  SIAP_KIRIM
+  TERKIRIM
+}
+
+enum FotoType {
+  PROSES_MASAK
+  MAKANAN_JADI
+}
+
+model MenuMaster {
+  id        String       @id @default(uuid()) @db.Uuid
+  name      String
+  category  MenuCategory
+  batches   BatchProduksi[]
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  @@map("menu_masters")
+}
+
+model BatchProduksi {
+  id               String       @id // format: MBG-DD/MM/YYYY-XXX
+  menuId           String       @db.Uuid
+  menu             MenuMaster   @relation(fields: [menuId], references: [id])
+  totalPorsi       Int
+  waktuMulai       DateTime?
+  waktuSelesai     DateTime?
+  petugasId        String?      @db.Uuid
+  petugas          User?        @relation("PetugasBatch", fields: [petugasId], references: [id])
+  driverId         String?      @db.Uuid
+  driver           User?        @relation("DriverBatch", fields: [driverId], references: [id])
+  noKendaraan      String?
+  ruteDistribusi   String?
+  jamKeberangkatan DateTime?
+  status           BatchStatus  @default(DRAFT)
+  catatanKualitas  String?      @db.Text
+  isApproved       Boolean      @default(false)
+  sekolah          BatchSekolah[]
+  varian           BatchVarian[]
+  foto             BatchFoto[]
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+
+  @@map("batch_produksi")
+}
+
+model BatchSekolah {
+  id        String        @id @default(uuid()) @db.Uuid
+  batchId   String
+  batch     BatchProduksi @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  sekolahId String?       @db.Uuid
+  sekolah   User?         @relation("SekolahBatch", fields: [sekolahId], references: [id])
+  porsi     Int
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@map("batch_sekolah")
+}
+
+model BatchVarian {
+  id          String        @id @default(uuid()) @db.Uuid
+  batchId     String
+  batch       BatchProduksi @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  namaVarian  String
+  jumlahPorsi Int
+  
+  energi      Float?
+  protein     Float?
+  lemak       Float?
+  karbohidrat Float?
+  serat       Float?
+  
+  bahan       BatchBahan[]
+  
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  @@map("batch_varian")
+}
+
+enum KategoriKomposisi {
+  MAKANAN_POKOK
+  LAUK_PAUK
+  SAYUR
+  BUAH
+  SUSU
+}
+
+model BatchBahan {
+  id          String        @id @default(uuid()) @db.Uuid
+  varianId    String        @db.Uuid
+  varian      BatchVarian   @relation(fields: [varianId], references: [id], onDelete: Cascade)
+  kategori    KategoriKomposisi?
+  namaBahan   String
+  jumlah      Float
+  satuan      String
+  harga       Float?
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  @@map("batch_bahan")
+}
+
+model BatchFoto {
+  id        String        @id @default(uuid()) @db.Uuid
+  batchId   String
+  batch     BatchProduksi @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  jenis     FotoType
+  url       String
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@map("batch_foto")
 }

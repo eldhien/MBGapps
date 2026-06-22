@@ -37,9 +37,10 @@ async function request<T>(path: string, options: RequestInit = {}) {
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as {
       message?: string
+      error?: string
     } | null
 
-    throw new Error(payload?.message ?? "Request gagal.")
+    throw new Error(payload?.error ? `${payload.message}: ${payload.error}` : (payload?.message ?? "Request gagal."))
   }
 
   if (response.status === 204) {
@@ -104,4 +105,75 @@ export const api = {
       await request<null>(`/users/${id}`, { method: "DELETE" })
     },
   },
+  batches: {
+    list() {
+      return request<any[]>("/batches")
+    },
+    get(id: string) {
+      return request<any>(`/batches/${encodeURIComponent(id)}`)
+    },
+    create(payload: any) {
+      return request<any>("/batches", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    },
+    updateStatus(id: string, payload: { status: string; catatanKualitas?: string }) {
+      return request<any>(`/batches/${encodeURIComponent(id)}/status`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      })
+    },
+    updateDelivery(id: string, payload: { driverId?: string; noKendaraan?: string; jamKeberangkatan?: string }) {
+      return request<any>(`/batches/${encodeURIComponent(id)}/delivery`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      })
+    },
+    async uploadPhoto(id: string, file: File, jenis: "PROSES_MASAK" | "MAKANAN_JADI") {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("jenis", jenis)
+
+      const token = getAccessToken()
+      const headers = new Headers()
+      if (token) headers.set("Authorization", `Bearer ${token}`)
+      
+      const response = await fetch(`${API_URL}/batches/${encodeURIComponent(id)}/upload`, {
+        method: "POST",
+        headers,
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("Upload failed with status:", response.status, errorText)
+        throw new Error(`Gagal mengunggah foto: ${errorText}`)
+      }
+      return response.json()
+    }
+  },
+  menus: {
+    list() {
+      return request<any[]>("/menus")
+    },
+    create(payload: { name: string; category: string }) {
+      return request<any>("/menus", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    }
+  },
+  settings: {
+    getDapurCapacity(date?: string) {
+      const query = date ? `?date=${date}` : ""
+      return request<any>(`/settings/dapur${query}`)
+    },
+    setDapurCapacity(payload: { date: string; capacity: number }) {
+      return request<any>("/settings/dapur", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    }
+  }
 }

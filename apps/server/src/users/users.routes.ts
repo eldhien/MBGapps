@@ -52,9 +52,25 @@ async function requireSuperAdmin(
   return { currentUser }
 }
 
+async function requireSppgOrSuperAdmin(
+  req: Parameters<typeof getCurrentUser>[0]
+): Promise<SuperAdminCheck> {
+  const currentUser = await getCurrentUser(req)
+
+  if (!currentUser) {
+    return { status: 401, message: "Token tidak ditemukan atau tidak valid." }
+  }
+
+  if (currentUser.role !== "SUPER_ADMIN" && currentUser.role !== "SPPG") {
+    return { status: 403, message: "Hanya Super Admin atau SPPG yang dapat mengakses pengguna." }
+  }
+
+  return { currentUser }
+}
+
 usersRouter.get("/", async (req, res, next) => {
   try {
-    const auth = await requireSuperAdmin(req)
+    const auth = await requireSppgOrSuperAdmin(req)
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })

@@ -2,10 +2,11 @@ import { Navigate, Route, Routes } from "react-router-dom"
 
 import { ProtectedRoute } from "@/features/auth/ProtectedRoute"
 import { RoleRoute } from "@/features/navigation/RoleRoute"
-import { navigationPages } from "@/features/navigation/navigation"
-import { ComingSoonPage } from "@/pages/ComingSoonPage"
 import { DashboardPage } from "@/pages/DashboardPage"
+import { FoodReportsPage } from "@/pages/FoodReportsPage"
+import { KitchenChecklistPage } from "@/pages/KitchenChecklistPage"
 import { LoginPage } from "@/pages/LoginPage"
+import { StudentComplaintsPage } from "@/pages/StudentComplaintsPage"
 import { UsersPage } from "@/pages/UsersPage"
 
 export function App() {
@@ -23,19 +24,30 @@ export function App() {
             </RoleRoute>
           }
         />
-        {navigationPages
-          .filter((page) => !["dashboard", "users"].includes(page.key))
-          .map((page) => (
-            <Route
-              key={page.key}
-              path={page.path}
-              element={
-                <RoleRoute>
-                  <ComingSoonPage title={page.title} features={page.features} />
-                </RoleRoute>
-              }
-            />
-          ))}
+        <Route
+          path="/kitchen-checklist"
+          element={
+            <RoleRoute>
+              <KitchenChecklistPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/food-reports"
+          element={
+            <RoleRoute>
+              <FoodReportsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/student-complaints"
+          element={
+            <RoleRoute>
+              <StudentComplaintsPage />
+            </RoleRoute>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

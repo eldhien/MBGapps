@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs"
 import { Router } from "express"
 import { UserRole } from "@prisma/client"
 
+import { listDemoUsers } from "../auth/demo-users.js"
 import { prisma } from "../lib/prisma.js"
 import { getCurrentUser } from "../auth/session.js"
 
@@ -76,9 +77,15 @@ usersRouter.get("/", async (req, res, next) => {
       return res.status(auth.status).json({ message: auth.message })
     }
 
-    const users = await prisma.user.findMany({
-      orderBy: { createdAt: "desc" },
-    })
+    let users
+
+    try {
+      users = await prisma.user.findMany({
+        orderBy: { createdAt: "desc" },
+      })
+    } catch {
+      return res.json({ users: listDemoUsers().map(toUserResponse) })
+    }
 
     return res.json({ users: users.map(toUserResponse) })
   } catch (error) {

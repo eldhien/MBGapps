@@ -60,7 +60,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [refreshProfile])
 
   const signOut = useCallback(async () => {
-    await api.logout()
+    try {
+      await api.logout()
+    } catch {
+      // Token lokal tetap dibersihkan oleh api.logout().
+    }
     sessionStorage.setItem("logout_success", "true")
     setProfile(null)
   }, [])

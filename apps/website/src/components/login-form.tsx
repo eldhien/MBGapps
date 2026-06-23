@@ -14,7 +14,7 @@ import {
   EyeOffIcon,
   GalleryVerticalEndIcon,
 } from "lucide-react"
-import { useState } from "react"
+import { useState, type ComponentProps, type FormEvent } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 
 type LocationState = {
@@ -26,7 +26,7 @@ type LocationState = {
 export function LoginForm({
   className,
   ...props
-}: React.ComponentProps<"div">) {
+}: ComponentProps<"div">) {
   const navigate = useNavigate()
   const location = useLocation()
   const { refreshProfile } = useAuth()
@@ -34,7 +34,7 @@ export function LoginForm({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
 
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
     setIsSubmitting(true)

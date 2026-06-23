@@ -1,7 +1,9 @@
 import bcrypt from "bcryptjs"
-import { Router } from "express"
+import { type Request, Router } from "express"
 
+import { env } from "../config/env.js"
 import { prisma } from "../lib/prisma.js"
+import { findDemoUserByUsername } from "./demo-users.js"
 import { createSession, getCurrentUser } from "./session.js"
 import { canAccessWebsite, type UserRole } from "./roles.js"
 
@@ -23,6 +25,24 @@ function toAuthResponse(profile: {
 
 function normalizeUsername(username?: string) {
   return username?.trim().toLowerCase()
+}
+
+function getLogoutRedirectTarget(req: Request) {
+  const requestOrigin = req.get("origin")
+  if (requestOrigin) {
+    return requestOrigin
+  }
+
+  const referer = req.get("referer")
+  if (referer) {
+    try {
+      return new URL(referer).origin
+    } catch {
+      // Abaikan referer yang tidak valid dan gunakan fallback.
+    }
+  }
+
+  return env.clientOrigins[0] ?? "http://localhost:5173"
 }
 
 authRouter.post("/signup", async (req, res, next) => {
@@ -95,9 +115,33 @@ authRouter.post("/login", async (req, res, next) => {
         .json({ message: "Username dan password wajib diisi." })
     }
 
-    const profile = await prisma.user.findUnique({
-      where: { username: normalizedUsername },
-    })
+    const demoProfile = findDemoUserByUsername(normalizedUsername)
+
+    if (demoProfile) {
+      if (demoProfile.password !== password) {
+        return res
+          .status(401)
+          .json({ message: "Username atau password tidak valid." })
+      }
+
+      return res.json({
+        ...toAuthResponse(demoProfile),
+        session: createSession(demoProfile),
+      })
+    }
+
+    let profile
+
+    try {
+      profile = await prisma.user.findUnique({
+        where: { username: normalizedUsername },
+      })
+    } catch {
+      return res.status(503).json({
+        message:
+          "Database belum tersedia. Gunakan akun demo yang disiapkan atau aktifkan database lokal.",
+      })
+    }
 
     if (!profile) {
       return res
@@ -144,4 +188,9 @@ authRouter.get("/me", async (req, res, next) => {
 
 authRouter.post("/logout", (_req, res) => {
   return res.status(204).send()
+})
+
+authRouter.get("/logout", (req, res) => {
+  const clientOrigin = getLogoutRedirectTarget(req)
+  return res.redirect(303, `${clientOrigin}/login`)
 })

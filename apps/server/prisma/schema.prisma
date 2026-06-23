@@ -205,3 +205,130 @@ model BatchFoto {
 
   @@map("batch_foto")
 }
+
+enum BatchStatus {
+  DRAFT
+  SCHEDULED
+  IN_PRODUCTION
+  DISTRIBUTED
+  CANCELLED
+}
+
+enum DistributionStatus {
+  PENDING
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+}
+
+enum FoodReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+}
+
+enum ReportCategory {
+  BASI
+  RUSAK
+  TERLAMBAT
+  SUHU_TIDAK_SESUAI
+  LAINNYA
+}
+
+enum ReceivingStatus {
+  PENDING
+  COMPLETED
+  REJECTED
+}
+
+model KitchenChecklist {
+  id               String   @id @default(uuid())
+  apdPhoto         String   @map("apd_photo")
+  alatPhoto        String   @map("alat_photo")
+  kebersihanPhoto  String   @map("kebersihan_photo")
+  kondisiDapur     String   @map("kondisi_dapur")
+  timestamp        DateTime
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([timestamp], map: "kitchen_checklists_timestamp_idx")
+  @@map("kitchen_checklists")
+}
+
+model Batch {
+  id              String      @id @default(uuid())
+  batchIdUnik     String      @unique @map("batch_id_unik")
+  namaMenu        String
+  jumlahPorsi     Int
+  komposisi       String
+  waktuProduksi   DateTime    @map("waktu_produksi")
+  driverId        String?
+  photoUrl        String?
+  status          BatchStatus @default(DRAFT)
+  sppgId          String?
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  distributions Distribution[]
+
+  @@map("batches")
+}
+
+model Distribution {
+  id             String            @id @default(uuid())
+  batchId        String
+  sekolahId      String
+  waktuKirim     DateTime?         @map("waktu_kirim")
+  jumlahPorsi    Int
+  status         DistributionStatus @default(PENDING)
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  batch Batch @relation(fields: [batchId], references: [id])
+
+  receivingReceipt ReceivingReceipt?
+
+  @@map("distributions")
+}
+
+model FoodReport {
+  id              String           @id @default(uuid())
+  kategori        ReportCategory
+  kategoriLainnya String?          @map("kategori_lainnya")
+  deskripsi       String
+  sekolahId       String
+  batchId         String?
+  status          FoodReportStatus @default(PENDING)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  @@map("food_reports")
+}
+
+model StudentComplaint {
+  id             String        @id @default(uuid())
+  jumlahSiswa    Int
+  gejala         String
+  waktuKejadian  DateTime      @map("waktu_kejadian")
+  tindakan       String
+  sekolahId      String
+  batchId        String?
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("student_complaints")
+}
+
+model ReceivingReceipt {
+  id               String        @id @default(uuid())
+  distributionId   String        @unique
+  status           ReceivingStatus @default(PENDING)
+  catatan          String?
+  timestamp        DateTime?
+  createdAt        DateTime      @default(now()) @map("created_at")
+  updatedAt        DateTime      @updatedAt @map("updated_at")
+
+  distribution Distribution @relation(fields: [distributionId], references: [id])
+
+  @@map("receiving_receipts")
+}

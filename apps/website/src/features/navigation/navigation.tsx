@@ -11,6 +11,7 @@ import {
   Settings2Icon,
   ShieldCheckIcon,
   TruckIcon,
+  UploadIcon,
   UsersIcon,
 } from "lucide-react"
 
@@ -36,6 +37,11 @@ export type NavigationPage = {
   allowedRoles: UserRole[]
   icon: React.ReactNode
   features: string[]
+  children?: {
+    title: string
+    path: string
+    icon?: React.ReactNode
+  }[]
 }
 
 const allRoles: UserRole[] = ["SUPER_ADMIN", "SPPG", "SEKOLAH"]
@@ -86,13 +92,25 @@ export const navigationPages: NavigationPage[] = [
   },
   {
     key: "kitchenChecklist",
-    title: "Checklist Kebersihan",
-    path: "/kitchen-checklist",
+    title: "Laporan Kebersihan",
+    path: "/cleanliness-reports",
     allowedRoles: sppgRoles,
     icon: <ClipboardCheckIcon />,
     features: [
-      "Checklist kebersihan dapur digital.",
-      "Upload foto seminggu sekali: APD, alat, kebersihan, timestamp, kondisi dapur.",
+      "Laporan kebersihan dapur digital.",
+      "Upload foto seminggu sekali: APD, alat, kebersihan, dan kondisi dapur.",
+    ],
+    children: [
+      {
+        title: "Upload Laporan",
+        path: "/cleanliness-reports/upload",
+        icon: <UploadIcon />,
+      },
+      {
+        title: "Riwayat Laporan",
+        path: "/cleanliness-reports/history",
+        icon: <HistoryIcon />,
+      },
     ],
   },
   {
@@ -194,5 +212,8 @@ export function getVisibleNavigation(role?: UserRole | null) {
 }
 
 export function findNavigationPage(path: string) {
-  return navigationPages.find((page) => page.path === path)
+  return navigationPages.find(
+    (page) =>
+      page.path === path || page.children?.some((child) => child.path === path)
+  )
 }

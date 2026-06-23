@@ -13,6 +13,9 @@ model User {
   username       String   @unique(map: "user_profiles_username_key")
   passwordHash   String   @map("password_hash")
   role           UserRole @default(SPPG)
+  schoolId       String?  @unique @map("school_id") @db.Uuid
+  school         School?  @relation("SchoolAccount", fields: [schoolId], references: [id])
+  managedSchools School[] @relation("SppgSchools")
   petugasBatches BatchProduksi[] @relation("PetugasBatch")
   driverBatches  BatchProduksi[] @relation("DriverBatch")
   sekolahBatches BatchSekolah[]  @relation("SekolahBatch")
@@ -27,6 +30,44 @@ enum UserRole {
   SPPG
   SEKOLAH
   DRIVER
+}
+
+model School {
+  id          String          @id @default(uuid()) @db.Uuid
+  name        String
+  npsn        String?
+  address     String?         @db.Text
+  sppgId      String          @map("sppg_id") @db.Uuid
+  sppg        User            @relation("SppgSchools", fields: [sppgId], references: [id])
+  account     User?           @relation("SchoolAccount")
+  progress    SchoolProgress?
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  @@index([sppgId])
+  @@map("schools")
+}
+
+enum SchoolProgressStatus {
+  BELUM_ADA
+  MENUNGGU_PRODUKSI
+  DIPRODUKSI
+  SIAP_DIKIRIM
+  DIKIRIM
+  DITERIMA
+  BERMASALAH
+}
+
+model SchoolProgress {
+  id        String               @id @default(uuid()) @db.Uuid
+  schoolId  String               @unique @map("school_id") @db.Uuid
+  school    School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  status    SchoolProgressStatus @default(BELUM_ADA)
+  notes     String?              @db.Text
+  updatedAt DateTime             @updatedAt @map("updated_at")
+  createdAt DateTime             @default(now()) @map("created_at")
+
+  @@map("school_progress")
 }
 
 model DapurDailyCapacity {

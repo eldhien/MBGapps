@@ -2,6 +2,7 @@ import { AlertToast } from "@/components/ui/alert-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { api } from "@/lib/api"
+import type { SchoolAccount } from "@/lib/api"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 import { QRCodeSVG } from "qrcode.react"
 import { useEffect, useState } from "react"
@@ -16,6 +17,7 @@ export function BatchCreatePage() {
   
   const [menus, setMenus] = useState<any[]>([])
   const [users, setUsers] = useState<any[]>([])
+  const [schoolAccounts, setSchoolAccounts] = useState<SchoolAccount[]>([])
   const [dapurCapacity, setDapurCapacity] = useState<number>(1000)
 
   const [form, setForm] = useState({
@@ -54,10 +56,12 @@ export function BatchCreatePage() {
     Promise.all([
       api.menus.list(),
       api.users.list(),
+      api.schoolAccounts.list(),
       api.settings.getDapurCapacity()
-    ]).then(([m, u, c]) => {
+    ]).then(([m, u, schoolResponse, c]) => {
       setMenus(m)
       setUsers(u.users)
+      setSchoolAccounts(schoolResponse.schools)
       setDapurCapacity(c?.capacity || 1000)
     }).catch(err => console.error(err))
   }, [])
@@ -303,9 +307,24 @@ export function BatchCreatePage() {
                     className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs"
                   >
                     <option value="">Pilih Sekolah...</option>
-                    {users.filter(u => u.role === "SEKOLAH").map(u => (
-                      <option key={u.id} value={u.id}>{u.username}</option>
-                    ))}
+                    {schoolAccounts
+                      .filter(school => school.account)
+                      .map(school => (
+                        <option key={school.id} value={school.account?.id}>
+                          {school.name} ({school.account?.username})
+                        </option>
+                      ))}
+                    {users
+                      .filter(
+                        u =>
+                          u.role === "SEKOLAH" &&
+                          !schoolAccounts.some(
+                            school => school.account?.id === u.id
+                          )
+                      )
+                      .map(u => (
+                        <option key={u.id} value={u.id}>{u.username}</option>
+                      ))}
                   </select>
                 </div>
                 <div className="w-32">

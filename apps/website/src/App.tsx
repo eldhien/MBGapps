@@ -6,6 +6,7 @@ import { navigationPages } from "@/features/navigation/navigation"
 import { ComingSoonPage } from "@/pages/ComingSoonPage"
 import { DashboardPage } from "@/pages/DashboardPage"
 import { LoginPage } from "@/pages/LoginPage"
+import { SchoolAccountsPage } from "@/pages/SchoolAccountsPage"
 import { UsersPage } from "@/pages/UsersPage"
 import { BatchListPage } from "@/pages/batch/BatchListPage"
 import { BatchCreatePage } from "@/pages/batch/BatchCreatePage"
@@ -28,6 +29,14 @@ export function App() {
           }
         />
         <Route
+          path="/school-accounts"
+          element={
+            <RoleRoute>
+              <SchoolAccountsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
           path="/batch"
           element={
             <RoleRoute>
@@ -44,7 +53,12 @@ export function App() {
           }
         />
         {navigationPages
-          .filter((page) => !["dashboard", "users", "batch"].includes(page.key))
+          .filter(
+            (page) =>
+              !["dashboard", "users", "schoolAccounts", "batch"].includes(
+                page.key
+              )
+          )
           .map((page) => (
             <Route
               key={page.key}

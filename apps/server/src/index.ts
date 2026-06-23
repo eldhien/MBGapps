@@ -6,6 +6,7 @@ import { batchRouter } from "./batch/batch.routes.js"
 import { uploadRouter } from "./batch/batch.upload.js"
 import { env } from "./config/env.js"
 import { menuRouter } from "./menu/menu.routes.js"
+import { schoolAccountsRouter } from "./school-accounts/school-accounts.routes.js"
 import { settingsRouter } from "./settings/settings.routes.js"
 import { usersRouter } from "./users/users.routes.js"
 
@@ -29,6 +30,7 @@ app.use("/users", usersRouter)
 app.use("/batches", batchRouter)
 app.use("/batches", uploadRouter)
 app.use("/menus", menuRouter)
+app.use("/school-accounts", schoolAccountsRouter)
 app.use("/settings", settingsRouter)
 
 app.use(

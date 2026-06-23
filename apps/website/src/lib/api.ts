@@ -19,6 +19,27 @@ export type ManagedUser = {
   createdAt: string
 }
 
+export type SchoolAccount = {
+  id: string
+  name: string
+  npsn: string | null
+  address: string | null
+  createdAt: string
+  sppg: {
+    id: string
+    username: string
+  }
+  account: {
+    id: string
+    username: string
+  } | null
+  progress: {
+    status: string
+    notes: string | null
+    updatedAt: string
+  } | null
+}
+
 async function request<T>(path: string, options: RequestInit = {}) {
   const token = getAccessToken()
   const headers = new Headers(options.headers)
@@ -103,6 +124,24 @@ export const api = {
     },
     async delete(id: string) {
       await request<null>(`/users/${id}`, { method: "DELETE" })
+    },
+  },
+  schoolAccounts: {
+    list() {
+      return request<{ schools: SchoolAccount[] }>("/school-accounts")
+    },
+    create(payload: {
+      address?: string
+      npsn?: string
+      password: string
+      schoolName: string
+      sppgId?: string
+      username: string
+    }) {
+      return request<{ school: SchoolAccount }>("/school-accounts", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
     },
   },
   batches: {

@@ -17,6 +17,7 @@ import {
 export type AppPageKey =
   | "dashboard"
   | "users"
+  | "schoolAccounts"
   | "batch"
   | "kitchenChecklist"
   | "distribution"
@@ -59,6 +60,17 @@ export const navigationPages: NavigationPage[] = [
     allowedRoles: ["SUPER_ADMIN"],
     icon: <UsersIcon />,
     features: ["Manajemen pengguna multi-role: Super Admin, SPPG, dan Sekolah."],
+  },
+  {
+    key: "schoolAccounts",
+    title: "Akun Sekolah",
+    path: "/school-accounts",
+    allowedRoles: sppgRoles,
+    icon: <SchoolIcon />,
+    features: [
+      "Penambahan akun sekolah beserta data sekolah dan progress awal.",
+      "Akun sekolah dipakai bersama oleh kepala sekolah atau guru.",
+    ],
   },
   {
     key: "batch",

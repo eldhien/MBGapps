@@ -347,47 +347,57 @@ export function FoodReportsPage({
         ) : null}
 
         {!isCreatePage ? (
-        <Card className="border-border/70 bg-card">
-          <CardHeader>
-            <CardTitle className="text-xl">Riwayat Laporan</CardTitle>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Daftar laporan yang sudah dikirim beserta status tindak lanjutnya.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {loading ? (
-              <div className="overflow-hidden rounded-xl border">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="grid gap-3 border-b p-4 last:border-0 md:grid-cols-[0.9fr_0.9fr_1.6fr_0.7fr_0.8fr]"
-                  >
-                    <Skeleton className="h-5 w-32" />
-                    <Skeleton className="h-5 w-28" />
-                    <Skeleton className="h-5 w-full" />
-                    <Skeleton className="h-5 w-20" />
-                    <Skeleton className="h-5 w-24" />
-                  </div>
-                ))}
-              </div>
-            ) : null}
+        <section className="rounded-lg border bg-card text-card-foreground">
+          <div className="border-b p-4">
+            <h2 className="text-lg font-semibold">Riwayat Laporan</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="px-4 py-3 font-medium">Tanggal</th>
+                  <th className="px-4 py-3 font-medium">Kategori</th>
+                  <th className="px-4 py-3 font-medium">Deskripsi</th>
+                  <th className="px-4 py-3 font-medium">Batch</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading
+                  ? Array.from({ length: 3 }).map((_, index) => (
+                      <tr key={index} className="border-b last:border-0">
+                        <td className="px-4 py-3">
+                          <Skeleton className="h-4 w-32" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Skeleton className="h-4 w-28" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Skeleton className="h-4 w-64" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Skeleton className="h-4 w-16" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Skeleton className="h-4 w-24" />
+                        </td>
+                      </tr>
+                    ))
+                  : null}
 
-            {!loading && reports.length === 0 ? (
-              <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-                Belum ada laporan masalah makanan yang terkirim.
-              </div>
-            ) : null}
+                {!loading && reports.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-4 py-8 text-center text-muted-foreground"
+                    >
+                      Belum ada laporan masalah makanan yang terkirim.
+                    </td>
+                  </tr>
+                ) : null}
 
-            {!loading && reports.length > 0 ? (
-              <div className="overflow-hidden rounded-xl border">
-                <div className="hidden grid-cols-[0.9fr_0.9fr_1.6fr_0.7fr_0.8fr] gap-3 border-b bg-muted/40 px-4 py-3 text-xs font-semibold text-muted-foreground md:grid">
-                  <span>Tanggal</span>
-                  <span>Kategori</span>
-                  <span>Deskripsi</span>
-                  <span>Batch</span>
-                  <span>Status</span>
-                </div>
-                {reports.map((report) => {
+                {!loading
+                  ? reports.map((report) => {
                   const statusConfig = {
                     PENDING: {
                       bg: "bg-slate-500/10 text-slate-800 dark:text-slate-300 border-slate-500/20",
@@ -409,48 +419,48 @@ export function FoodReportsPage({
                   const CatIcon = categoryIcons[report.kategori] || HelpCircleIcon
 
                   return (
-                    <div
-                      key={report.id}
-                      className="grid gap-3 border-b p-4 last:border-0 md:grid-cols-[0.9fr_0.9fr_1.6fr_0.7fr_0.8fr] md:items-center"
-                    >
-                      <div>
-                        <p className="text-sm font-medium">
+                    <tr key={report.id} className="border-b last:border-0">
+                      <td className="px-4 py-3">
+                        <p className="font-medium">
                           {new Date(report.createdAt).toLocaleDateString("id-ID")}
                         </p>
                         <p className="mt-0.5 text-xs text-muted-foreground">
                           {new Date(report.createdAt).toLocaleTimeString("id-ID")}
                         </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className={`rounded-md border p-1.5 ${categoryColors[report.kategori]}`}>
-                          <CatIcon className="size-4" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className={`rounded-md border p-1.5 ${categoryColors[report.kategori]}`}>
+                            <CatIcon className="size-4" />
+                          </div>
+                          <span className="font-medium">
+                            {report.kategori === "LAINNYA" && report.kategoriLainnya
+                              ? report.kategoriLainnya
+                              : formatCategory(report.kategori)}
+                          </span>
                         </div>
-                        <span className="text-sm font-medium">
-                          {report.kategori === "LAINNYA" && report.kategoriLainnya
-                            ? report.kategoriLainnya
-                            : formatCategory(report.kategori)}
-                        </span>
-                      </div>
-                      <p className="line-clamp-2 text-sm text-muted-foreground">
-                        {report.deskripsi}
-                      </p>
-                      <span className="text-sm text-muted-foreground">
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        <p className="line-clamp-2">{report.deskripsi}</p>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
                         {report.batchId ? "Ada" : "-"}
-                      </span>
-                      <div>
+                      </td>
+                      <td className="px-4 py-3">
                         <span
                           className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusConfig.bg}`}
                         >
                           {statusConfig.label}
                         </span>
-                      </div>
-                    </div>
+                      </td>
+                    </tr>
                   )
-                })}
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
+                })
+                  : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
         ) : null}
       </section>
     </DashboardShell>

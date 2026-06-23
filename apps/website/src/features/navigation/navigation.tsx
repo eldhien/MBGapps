@@ -2,6 +2,8 @@ import type React from "react"
 import type { UserRole } from "@/features/auth/types"
 import {
   ClipboardCheckIcon,
+  BrainCircuitIcon,
+  DownloadIcon,
   FileTextIcon,
   HistoryIcon,
   LayoutDashboardIcon,
@@ -18,6 +20,7 @@ import {
 export type AppPageKey =
   | "dashboard"
   | "users"
+  | "schoolAccounts"
   | "batch"
   | "kitchenChecklist"
   | "distribution"
@@ -77,6 +80,18 @@ export const navigationPages: NavigationPage[] = [
       "Sistem Batch ID unik untuk setiap produksi makanan.",
       "Generate QR Code untuk setiap batch makanan.",
     ],
+    children: [
+      {
+        title: "Upload Batch",
+        path: "/batch/create",
+        icon: <UploadIcon />,
+      },
+      {
+        title: "Riwayat Batch Makanan",
+        path: "/batch",
+        icon: <HistoryIcon />,
+      },
+    ],
   },
   {
     key: "kitchenChecklist",
@@ -110,6 +125,18 @@ export const navigationPages: NavigationPage[] = [
     features: [
       "Manajemen distribusi makanan: ID batch, ID sekolah, waktu kirim, jumlah porsi, status pengiriman.",
     ],
+    children: [
+      {
+        title: "Upload Distribusi",
+        path: "/distribution",
+        icon: <UploadIcon />,
+      },
+      {
+        title: "Riwayat Distribusi",
+        path: "/distribution/history",
+        icon: <HistoryIcon />,
+      },
+    ],
   },
   {
     key: "masterData",
@@ -119,8 +146,19 @@ export const navigationPages: NavigationPage[] = [
     icon: <Settings2Icon />,
     features: [
       "Data driver.",
-      "Laporan dari sekolah.",
-      "Riwayat batch makanan dan distribusi.",
+      "Data akun sekolah.",
+    ],
+    children: [
+      {
+        title: "Akun Sekolah",
+        path: "/school-accounts",
+        icon: <SchoolIcon />,
+      },
+      {
+        title: "Driver",
+        path: "/master-data/drivers",
+        icon: <TruckIcon />,
+      },
     ],
   },
   {
@@ -133,6 +171,28 @@ export const navigationPages: NavigationPage[] = [
       "Riwayat laporan sekolah dan keluhan siswa.",
       "Export laporan PDF: produksi, distribusi, risiko, keluhan.",
       "Deteksi pola keluhan siswa lintas sekolah untuk evaluasi SPPG.",
+    ],
+    children: [
+      {
+        title: "Riwayat Laporan Sekolah",
+        path: "/reports/school-reports",
+        icon: <FileTextIcon />,
+      },
+      {
+        title: "Riwayat Keluhan Siswa",
+        path: "/reports/student-complaints",
+        icon: <HistoryIcon />,
+      },
+      {
+        title: "Export Laporan PDF",
+        path: "/reports/export-pdf",
+        icon: <DownloadIcon />,
+      },
+      {
+        title: "Deteksi Pola Keluhan Siswa (AI)",
+        path: "/reports/complaint-patterns-ai",
+        icon: <BrainCircuitIcon />,
+      },
     ],
   },
   {

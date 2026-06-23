@@ -114,6 +114,73 @@ export type UploadedKitchenChecklistPhoto = {
   url: string
 }
 
+export type SchoolAccount = {
+  id: string
+  name: string
+  npsn: string | null
+  address: string | null
+  createdAt: string
+  sppg: {
+    id: string
+    username: string
+  }
+  account: {
+    id: string
+    username: string
+  } | null
+  progress: {
+    status: string
+    notes: string | null
+    updatedAt: string
+  } | null
+}
+
+export type Driver = {
+  id: string
+  name: string
+  phone: string | null
+  vehicleNumber: string | null
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type ProductionDistribution = {
+  id: string
+  batchId: string
+  waktuKirim: string | null
+  status: string
+  createdAt: string
+  batch: any
+  schools: {
+    id: string
+    jumlahPorsi: number
+    status: string
+    receivedAt: string | null
+    rejectedReason: string | null
+    school: {
+      id: string
+      name: string
+      npsn: string | null
+      address: string | null
+    }
+  }[]
+}
+
+export type SchoolDistribution = {
+  id: string
+  jumlahPorsi: number
+  status: string
+  receivedAt: string | null
+  rejectedReason: string | null
+  distribution: {
+    id: string
+    waktuKirim: string | null
+    status: string
+  }
+  batch: any
+}
+
 async function request<T>(path: string, options: RequestInit = {}) {
   const token = getAccessToken()
   const headers = new Headers(options.headers)
@@ -138,9 +205,10 @@ async function request<T>(path: string, options: RequestInit = {}) {
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as {
       message?: string
+      error?: string
     } | null
 
-    throw new Error(payload?.message ?? "Request gagal.")
+    throw new Error(payload?.error ? `${payload.message}: ${payload.error}` : (payload?.message ?? "Request gagal."))
   }
 
   if (response.status === 204) {
@@ -210,9 +278,223 @@ export const api = {
       await request<null>(`/users/${id}`, { method: "DELETE" })
     },
   },
+  schoolAccounts: {
+    list() {
+      return request<{ schools: SchoolAccount[] }>("/school-accounts")
+    },
+    create(payload: {
+      address?: string
+      password: string
+      schoolName: string
+      sppgId?: string
+      username: string
+    }) {
+      return request<{ school: SchoolAccount }>("/school-accounts", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    },
+    update(id: string, payload: {
+      address?: string
+      password?: string
+      schoolName?: string
+      sppgId?: string
+      username?: string
+    }) {
+      return request<{ school: SchoolAccount }>(`/school-accounts/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      })
+    },
+    async delete(id: string) {
+      await request<null>(`/school-accounts/${id}`, {
+        method: "DELETE",
+      })
+    },
+  },
   batches: {
     list() {
       return request<{ data: BatchSummary[] }>("/batches")
+    },
+  },
+  drivers: {
+    list(options?: { active?: boolean }) {
+      const query = options?.active ? "?active=true" : ""
+      return request<{ drivers: Driver[] }>(`/drivers${query}`)
+    },
+    create(payload: { name: string; phone?: string; vehicleNumber?: string }) {
+      return request<{ driver: Driver }>("/drivers", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    },
+    update(
+      id: string,
+      payload: {
+        isActive?: boolean
+        name?: string
+        phone?: string
+        vehicleNumber?: string
+      }
+    ) {
+      return request<{ driver: Driver }>(`/drivers/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      })
+    },
+    async delete(id: string) {
+      await request<null>(`/drivers/${id}`, {
+        method: "DELETE",
+      })
+    },
+  },
+  productionBatches: {
+    list() {
+      return request<any[]>("/production-batches")
+    },
+    get(id: string) {
+      return request<any>(`/production-batches/${encodeURIComponent(id)}`)
+    },
+    create(payload: any) {
+      return request<any>("/production-batches", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    },
+    update(id: string, payload: {
+      namaMenu?: string
+      totalPorsi?: number
+      varian?: any[]
+      waktuMulai?: string
+      waktuSelesai?: string
+    }) {
+      return request<any>(`/production-batches/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      })
+    },
+    updateStatus(id: string, payload: { status: string; catatanKualitas?: string }) {
+      return request<any>(`/production-batches/${encodeURIComponent(id)}/status`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      })
+    },
+    updateDelivery(id: string, payload: { driverId?: string; noKendaraan?: string; jamKeberangkatan?: string }) {
+      return request<any>(`/production-batches/${encodeURIComponent(id)}/delivery`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      })
+    },
+    async delete(id: string) {
+      await request<null>(`/production-batches/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      })
+    },
+    async uploadPhoto(id: string, file: File, jenis: "PROSES_MASAK" | "MAKANAN_JADI") {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("jenis", jenis)
+
+      const token = getAccessToken()
+      const headers = new Headers()
+      if (token) headers.set("Authorization", `Bearer ${token}`)
+      
+      const response = await fetch(`${API_URL}/batches/${encodeURIComponent(id)}/upload`, {
+        method: "POST",
+        headers,
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("Upload failed with status:", response.status, errorText)
+        throw new Error(`Gagal mengunggah foto: ${errorText}`)
+      }
+      return response.json()
+    }
+  },
+  menus: {
+    list() {
+      return request<any[]>("/menus")
+    },
+    create(payload: { name: string; category: string }) {
+      return request<any>("/menus", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    }
+  },
+  settings: {
+    getDapurCapacity(date?: string) {
+      const query = date ? `?date=${date}` : ""
+      return request<any>(`/settings/dapur${query}`)
+    },
+    setDapurCapacity(payload: { date: string; capacity: number }) {
+      return request<any>("/settings/dapur", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      })
+    }
+  },
+  productionDistributions: {
+    list() {
+      return request<{ distributions: ProductionDistribution[] }>(
+        "/production-distributions"
+      )
+    },
+    create(payload: {
+      batchId: string
+      driverId: string
+      schools: { schoolId: string; jumlahPorsi: number }[]
+      status?: string
+      waktuKirim?: string
+    }) {
+      return request<{ distribution: ProductionDistribution }>(
+        "/production-distributions",
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+        }
+      )
+    },
+    update(id: string, payload: {
+      batchId?: string
+      driverId?: string
+      schools?: { schoolId: string; jumlahPorsi: number }[]
+      status?: string
+      waktuKirim?: string
+    }) {
+      return request<{ distribution: ProductionDistribution }>(
+        `/production-distributions/${id}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        }
+      )
+    },
+    async delete(id: string) {
+      await request<null>(`/production-distributions/${id}`, {
+        method: "DELETE",
+      })
+    },
+  },
+  schoolDistributions: {
+    list() {
+      return request<{ distributions: SchoolDistribution[] }>(
+        "/school-distributions"
+      )
+    },
+    updateStatus(
+      id: string,
+      payload: { rejectedReason?: string; status: "DITERIMA" | "DITOLAK" }
+    ) {
+      return request<{ distribution: SchoolDistribution }>(
+        `/school-distributions/${id}/status`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(payload),
+        }
+      )
     },
   },
   dashboard: {

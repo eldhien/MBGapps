@@ -24,12 +24,16 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       : profile?.role === "SEKOLAH"
         ? "Dashboard Sekolah"
         : "Dashboard"
-  const navItems = getVisibleNavigation(profile?.role).map((page) => ({
-    title: page.title,
-    url: page.path,
-    icon: page.icon,
-    children: page.children,
-  }))
+  const navItems = React.useMemo(
+    () =>
+      getVisibleNavigation(profile?.role).map((page) => ({
+        title: page.title,
+        url: page.path,
+        icon: page.icon,
+        children: page.children,
+      })),
+    [profile?.role]
+  )
 
   return (
     <Sidebar collapsible="icon" {...props}>

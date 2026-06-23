@@ -15,20 +15,13 @@ import {
   GalleryVerticalEndIcon,
 } from "lucide-react"
 import { useState, type ComponentProps, type FormEvent } from "react"
-import { Link, useLocation, useNavigate } from "react-router-dom"
-
-type LocationState = {
-  from?: {
-    pathname?: string
-  }
-}
+import { Link, useNavigate } from "react-router-dom"
 
 export function LoginForm({
   className,
   ...props
 }: ComponentProps<"div">) {
   const navigate = useNavigate()
-  const location = useLocation()
   const { refreshProfile } = useAuth()
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -46,8 +39,7 @@ export function LoginForm({
     try {
       await api.login({ password, username })
       await refreshProfile()
-      const state = location.state as LocationState | null
-      navigate(state?.from?.pathname ?? "/dashboard", { replace: true })
+      navigate("/dashboard", { replace: true })
     } catch (error) {
       setError(error instanceof Error ? error.message : "Gagal login.")
       setIsSubmitting(false)

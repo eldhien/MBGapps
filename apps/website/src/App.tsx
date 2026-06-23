@@ -5,20 +5,40 @@ import { RoleRoute } from "@/features/navigation/RoleRoute"
 import { navigationPages } from "@/features/navigation/navigation"
 import { ComingSoonPage } from "@/pages/ComingSoonPage"
 import { DashboardPage } from "@/pages/DashboardPage"
+import { DistributionPage } from "@/pages/DistributionPage"
+import { DriversPage } from "@/pages/DriversPage"
 import { FoodReportsPage } from "@/pages/FoodReportsPage"
 import { KitchenChecklistPage } from "@/pages/KitchenChecklistPage"
 import { LoginPage } from "@/pages/LoginPage"
+import { SchoolDistributionsPage } from "@/pages/SchoolDistributionsPage"
 import { StudentComplaintsPage } from "@/pages/StudentComplaintsPage"
+import { SchoolAccountsPage } from "@/pages/SchoolAccountsPage"
 import { UsersPage } from "@/pages/UsersPage"
+import { BatchListPage } from "@/pages/batch/BatchListPage"
+import { BatchCreatePage } from "@/pages/batch/BatchCreatePage"
+import { BatchScanPage } from "@/pages/batch/BatchScanPage"
 
 const implementedPaths = new Set([
   "/dashboard",
   "/users",
+  "/school-accounts",
+  "/batch",
+  "/batch/create",
+  "/distribution",
+  "/distribution/history",
+  "/master-data/drivers",
+  "/reports",
+  "/receiving-validation",
+  "/scan-qr",
   "/cleanliness-reports",
   "/cleanliness-reports/upload",
   "/cleanliness-reports/history",
   "/food-reports",
   "/student-complaints",
+  "/reports/school-reports",
+  "/reports/student-complaints",
+  "/reports/export-pdf",
+  "/reports/complaint-patterns-ai",
 ])
 
 const comingSoonPages = navigationPages.filter(
@@ -30,6 +50,7 @@ export function App() {
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/batch-info/*" element={<BatchScanPage />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route
@@ -115,6 +136,138 @@ export function App() {
             }
           />
         ))}
+        <Route
+          path="/school-accounts"
+          element={
+            <RoleRoute>
+              <SchoolAccountsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/batch"
+          element={
+            <RoleRoute>
+              <BatchListPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/batch/create"
+          element={
+            <RoleRoute allowedRoles={["SUPER_ADMIN", "SPPG"]}>
+              <BatchCreatePage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/distribution"
+          element={
+            <RoleRoute>
+              <DistributionPage mode="create" />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/distribution/history"
+          element={
+            <RoleRoute>
+              <DistributionPage mode="history" />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/master-data/drivers"
+          element={
+            <RoleRoute>
+              <DriversPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/master-data/school-reports"
+          element={<Navigate to="/reports/school-reports" replace />}
+        />
+        <Route
+          path="/master-data/batch-history"
+          element={<Navigate to="/batch" replace />}
+        />
+        <Route
+          path="/master-data/distribution-history"
+          element={<Navigate to="/distribution/history" replace />}
+        />
+        <Route
+          path="/reports"
+          element={<Navigate to="/reports/school-reports" replace />}
+        />
+        <Route
+          path="/reports/school-reports"
+          element={
+            <RoleRoute>
+              <ComingSoonPage
+                title="Riwayat Laporan Sekolah"
+                features={["Riwayat laporan sekolah akan tersedia di sini."]}
+              />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/reports/student-complaints"
+          element={
+            <RoleRoute>
+              <ComingSoonPage
+                title="Riwayat Keluhan Siswa"
+                features={["Riwayat keluhan siswa akan tersedia di sini."]}
+              />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/reports/export-pdf"
+          element={
+            <RoleRoute>
+              <ComingSoonPage
+                title="Export Laporan PDF"
+                features={[
+                  "Export laporan PDF: produksi, distribusi, risiko, keluhan.",
+                ]}
+              />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/reports/complaint-patterns-ai"
+          element={
+            <RoleRoute>
+              <ComingSoonPage
+                title="Deteksi Pola Keluhan Siswa (AI)"
+                features={[
+                  "Deteksi pola keluhan siswa lintas sekolah untuk evaluasi SPPG.",
+                ]}
+              />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/receiving-validation"
+          element={
+            <RoleRoute>
+              <SchoolDistributionsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/scan-qr"
+          element={
+            <RoleRoute>
+              <BatchScanPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/school-distributions"
+          element={<Navigate to="/receiving-validation" replace />}
+        />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

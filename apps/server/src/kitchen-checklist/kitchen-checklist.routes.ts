@@ -1,76 +1,19 @@
 import { Router } from "express"
-import { createHash } from "node:crypto"
 
 import { getCurrentUser } from "../auth/session.js"
-import { env } from "../config/env.js"
 import {
   createFallbackKitchenChecklist,
   deleteFallbackKitchenChecklist,
   listFallbackKitchenChecklists,
   updateFallbackKitchenChecklist,
 } from "../lib/fallback-store.js"
+import { uploadImageToCloudinary } from "../lib/cloudinary.js"
 import { prisma } from "../lib/prisma.js"
 import { requireAuth } from "../middleware/auth.js"
 
 export const kitchenChecklistRouter = Router()
 
 kitchenChecklistRouter.use(requireAuth)
-
-type CloudinaryUploadResponse = {
-  secure_url?: string
-  public_id?: string
-  error?: {
-    message?: string
-  }
-}
-
-function getCloudinarySignature(params: Record<string, string>) {
-  const payload = Object.keys(params)
-    .sort()
-    .map((key) => `${key}=${params[key]}`)
-    .join("&")
-
-  return createHash("sha1")
-    .update(`${payload}${env.cloudinary?.apiSecret ?? ""}`)
-    .digest("hex")
-}
-
-async function uploadPhotoToCloudinary(photo: string, folder: string) {
-  if (!env.cloudinary) {
-    throw new Error("Penyimpanan foto belum siap. Coba lagi nanti.")
-  }
-
-  const timestamp = Math.round(Date.now() / 1000).toString()
-  const uploadParams = {
-    folder,
-    timestamp,
-  }
-  const formData = new FormData()
-
-  formData.set("file", photo)
-  formData.set("api_key", env.cloudinary.apiKey)
-  formData.set("folder", folder)
-  formData.set("timestamp", timestamp)
-  formData.set("signature", getCloudinarySignature(uploadParams))
-
-  const response = await fetch(
-    `https://api.cloudinary.com/v1_1/${env.cloudinary.cloudName}/image/upload`,
-    {
-      method: "POST",
-      body: formData,
-    }
-  )
-  const payload = (await response.json()) as CloudinaryUploadResponse
-
-  if (!response.ok || !payload.secure_url) {
-    throw new Error(payload.error?.message ?? "Foto belum bisa disimpan. Coba lagi.")
-  }
-
-  return {
-    publicId: payload.public_id ?? "",
-    url: payload.secure_url,
-  }
-}
 
 function getWeekRange(date = new Date()) {
   const start = new Date(date)
@@ -124,10 +67,10 @@ kitchenChecklistRouter.post("/photos", async (req, res, next) => {
     }
 
     const safeField = field?.replace(/[^a-z0-9_-]/gi, "") || "photo"
-    const upload = await uploadPhotoToCloudinary(
-      photo,
-      `mbg/cleanliness-reports/${currentUser.id}/${safeField}`
-    )
+    const upload = await uploadImageToCloudinary({
+      file: photo,
+      folder: `mbg/cleanliness-reports/${currentUser.id}/${safeField}`,
+    })
 
     res.status(201).json({ data: upload })
   } catch (error) {

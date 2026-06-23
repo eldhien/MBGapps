@@ -13,7 +13,11 @@ export const getBatches = async (req: Request, res: Response) => {
           select: { id: true, username: true, role: true },
         },
         driver: {
-          select: { id: true, username: true, role: true },
+          select: { id: true, name: true, phone: true, vehicleNumber: true },
+        },
+        foto: true,
+        varian: {
+          include: { bahan: true },
         },
       },
       orderBy: { createdAt: "desc" },
@@ -34,7 +38,7 @@ export const getBatchById = async (req: Request, res: Response): Promise<void> =
       include: {
         menu: true,
         petugas: { select: { id: true, username: true } },
-        driver: { select: { id: true, username: true } },
+        driver: { select: { id: true, name: true, phone: true, vehicleNumber: true } },
         sekolah: {
           include: {
             sekolah: { select: { id: true, username: true } },
@@ -66,23 +70,58 @@ export const createBatch = async (req: Request, res: Response) => {
   try {
     const {
       menuId,
+      namaMenu,
       totalPorsi,
       waktuMulai,
       waktuSelesai,
       petugasId,
+      driverId,
       sekolah, // array of { sekolahId, porsi }
       varian, // array of { namaVarian, jumlahPorsi, energi, protein, lemak, karbohidrat, serat, bahan: [] }
     } = req.body
 
+    let resolvedMenuId = menuId
+    const cleanMenuName =
+      typeof namaMenu === "string" ? namaMenu.trim() : ""
+
+    if (!resolvedMenuId && cleanMenuName) {
+      const existingMenu = await prisma.menuMaster.findFirst({
+        where: {
+          name: {
+            equals: cleanMenuName,
+            mode: "insensitive",
+          },
+        },
+      })
+
+      const menu =
+        existingMenu ||
+        (await prisma.menuMaster.create({
+          data: {
+            name: cleanMenuName,
+            category: "MENU_UTAMA",
+          },
+        }))
+
+      resolvedMenuId = menu.id
+    }
+
+    if (!resolvedMenuId) {
+      res.status(400).json({ message: "Nama menu wajib diisi" })
+      return
+    }
+
     // Generate Batch ID
-    const today = new Date()
-    const dd = String(today.getDate()).padStart(2, "0")
-    const mm = String(today.getMonth() + 1).padStart(2, "0")
-    const yyyy = today.getFullYear()
+    const now = new Date()
+    const dd = String(now.getDate()).padStart(2, "0")
+    const mm = String(now.getMonth() + 1).padStart(2, "0")
+    const yyyy = now.getFullYear()
 
     // Get today's start and end date for filtering
-    const startOfDay = new Date(today.setHours(0, 0, 0, 0))
-    const endOfDay = new Date(today.setHours(23, 59, 59, 999))
+    const startOfDay = new Date(now)
+    startOfDay.setHours(0, 0, 0, 0)
+    const endOfDay = new Date(now)
+    endOfDay.setHours(23, 59, 59, 999)
 
     const countToday = await prisma.batchProduksi.count({
       where: {
@@ -94,16 +133,17 @@ export const createBatch = async (req: Request, res: Response) => {
     })
 
     const sequence = String(countToday + 1).padStart(3, "0")
-    const batchId = `MBG-${dd}/${mm}/${yyyy}-${sequence}`
+    const batchId = `MBG-${dd}${mm}${yyyy}-${sequence}`
 
     const newBatch = await prisma.batchProduksi.create({
       data: {
         id: batchId,
-        menuId,
-        totalPorsi,
+        menuId: resolvedMenuId,
+        totalPorsi: Number(totalPorsi || 0),
         waktuMulai: waktuMulai ? new Date(waktuMulai) : null,
         waktuSelesai: waktuSelesai ? new Date(waktuSelesai) : null,
         petugasId: petugasId || null,
+        driverId: driverId || null,
         status: "DIPRODUKSI",
         sekolah: {
           create: sekolah?.map((s: any) => ({
@@ -133,6 +173,7 @@ export const createBatch = async (req: Request, res: Response) => {
         },
       },
       include: {
+        driver: true,
         menu: true,
         sekolah: true,
         varian: {
@@ -175,6 +216,106 @@ export const updateBatchStatus = async (req: Request, res: Response): Promise<vo
   }
 }
 
+export const updateBatch = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = req.params.id as string
+    const { namaMenu, totalPorsi, varian, waktuMulai, waktuSelesai } = req.body
+    const data: any = {}
+
+    if (typeof totalPorsi !== "undefined") {
+      data.totalPorsi = Number(totalPorsi)
+    }
+
+    if (typeof waktuMulai !== "undefined") {
+      data.waktuMulai = waktuMulai ? new Date(waktuMulai) : null
+    }
+
+    if (typeof waktuSelesai !== "undefined") {
+      data.waktuSelesai = waktuSelesai ? new Date(waktuSelesai) : null
+    }
+
+    const cleanMenuName =
+      typeof namaMenu === "string" ? namaMenu.trim() : ""
+
+    if (cleanMenuName) {
+      const existingMenu = await prisma.menuMaster.findFirst({
+        where: {
+          name: {
+            equals: cleanMenuName,
+            mode: "insensitive",
+          },
+        },
+      })
+
+      const menu =
+        existingMenu ||
+        (await prisma.menuMaster.create({
+          data: {
+            name: cleanMenuName,
+            category: "MENU_UTAMA",
+          },
+        }))
+
+      data.menuId = menu.id
+    }
+
+    const updatedBatch = await prisma.$transaction(async (tx) => {
+      const updated = await tx.batchProduksi.update({
+        where: { id },
+        data,
+      })
+
+      if (Array.isArray(varian)) {
+        await tx.batchVarian.deleteMany({
+          where: { batchId: id },
+        })
+
+        await Promise.all(
+          varian.map((item: any) =>
+            tx.batchVarian.create({
+              data: {
+                batchId: id,
+                namaVarian: item.namaVarian || "Utama",
+                jumlahPorsi: Number(item.jumlahPorsi || data.totalPorsi || updated.totalPorsi || 0),
+                bahan: {
+                  create:
+                    item.bahan?.map((bahan: any) => ({
+                      namaBahan: bahan.namaBahan,
+                      jumlah: Number(bahan.jumlah || 0),
+                      satuan: bahan.satuan || "item",
+                      harga:
+                        typeof bahan.harga === "undefined"
+                          ? null
+                          : Number(bahan.harga || 0),
+                      kategori: bahan.kategori || null,
+                    })) || [],
+                },
+              },
+            })
+          )
+        )
+      }
+
+      return tx.batchProduksi.findUniqueOrThrow({
+        where: { id },
+        include: {
+          driver: true,
+          foto: true,
+          menu: true,
+          varian: {
+            include: { bahan: true },
+          },
+        },
+      })
+    })
+
+    res.json(updatedBatch)
+  } catch (error: any) {
+    console.error(error)
+    res.status(500).json({ message: "Failed to update batch", error: error.message })
+  }
+}
+
 // PATCH /api/batches/:id/delivery
 export const updateBatchDelivery = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -195,5 +336,20 @@ export const updateBatchDelivery = async (req: Request, res: Response): Promise<
   } catch (error) {
     console.error(error)
     res.status(500).json({ message: "Failed to update batch delivery" })
+  }
+}
+
+export const deleteBatch = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const id = req.params.id as string
+
+    await prisma.batchProduksi.delete({
+      where: { id },
+    })
+
+    res.status(204).send()
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({ message: "Failed to delete batch" })
   }
 }

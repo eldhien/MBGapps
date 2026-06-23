@@ -1,10 +1,10 @@
 import { Router } from "express"
-import { BatchStatus } from "@prisma/client"
+import { LegacyBatchStatus } from "@prisma/client"
 
 import { prisma } from "../lib/prisma.js"
 
 export const batchesRouter = Router()
-const batchStatuses = new Set<string>(Object.values(BatchStatus))
+const batchStatuses = new Set<string>(Object.values(LegacyBatchStatus))
 
 batchesRouter.get("/", async (_req, res, next) => {
   try {
@@ -60,7 +60,7 @@ batchesRouter.post("/", async (req, res, next) => {
 batchesRouter.put("/:id", async (req, res, next) => {
   try {
     const { id } = req.params as { id: string }
-    const { status } = req.body as { status?: BatchStatus }
+    const { status } = req.body as { status?: LegacyBatchStatus }
 
     if (status && !batchStatuses.has(status)) {
       return res.status(400).json({ message: "Status batch tidak valid." })

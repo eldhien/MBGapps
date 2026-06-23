@@ -33,12 +33,14 @@ import {
   CheckCircle2Icon,
   EyeIcon,
   ImageUpIcon,
+  PencilIcon,
   ShieldCheckIcon,
   TriangleAlertIcon,
   Trash2Icon,
   UploadIcon,
 } from "lucide-react"
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react"
+import { createPortal } from "react-dom"
 import { Link } from "react-router-dom"
 
 type PhotoField = "apdPhoto" | "alatPhoto" | "kebersihanPhoto"
@@ -206,6 +208,10 @@ export function KitchenChecklistPage({
   const [viewTarget, setViewTarget] = useState<KitchenChecklist | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<KitchenChecklist | null>(null)
   const [deleteSubmitting, setDeleteSubmitting] = useState(false)
+  const [zoomPhoto, setZoomPhoto] = useState<{
+    label: string
+    url: string
+  } | null>(null)
 
   useEffect(() => {
     void loadChecklists()
@@ -735,98 +741,109 @@ export function KitchenChecklistPage({
         ) : null}
 
         {!isUploadPage ? (
-        <Card className="border-border/70">
-          <CardHeader>
-            <CardTitle className="text-xl">Riwayat Laporan</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Dokumentasi laporan kebersihan yang sudah tersimpan.
-            </p>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            {loading ? (
-              <div className="overflow-hidden rounded-xl border">
-                {Array.from({ length: 4 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className="grid gap-3 border-b p-4 last:border-0 md:grid-cols-[1fr_1.3fr_0.7fr_1fr]"
-                  >
-                    <Skeleton className="h-5 w-40" />
-                    <Skeleton className="h-5 w-full" />
-                    <Skeleton className="h-5 w-24" />
-                    <Skeleton className="h-9 w-full" />
-                  </div>
-                ))}
-              </div>
-            ) : null}
+        <section className="rounded-lg border bg-card text-card-foreground">
+          <div className="border-b p-4">
+            <h2 className="text-lg font-semibold">Riwayat Laporan</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="px-4 py-3 font-medium">Tanggal</th>
+                  <th className="px-4 py-3 font-medium">Kondisi dapur</th>
+                  <th className="px-4 py-3 font-medium">Foto</th>
+                  <th className="px-4 py-3 text-right font-medium">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading
+                  ? Array.from({ length: 4 }).map((_, index) => (
+                      <tr key={index} className="border-b last:border-0">
+                        <td className="px-4 py-3">
+                          <Skeleton className="h-4 w-32" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Skeleton className="h-4 w-64" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Skeleton className="h-4 w-16" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <Skeleton className="ml-auto h-8 w-32" />
+                        </td>
+                      </tr>
+                    ))
+                  : null}
 
-            {!loading && checklists.length === 0 ? (
-              <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-                Belum ada laporan kebersihan yang tersimpan.
-              </div>
-            ) : null}
+                {!loading && checklists.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={4}
+                      className="px-4 py-8 text-center text-muted-foreground"
+                    >
+                      Belum ada laporan kebersihan yang tersimpan.
+                    </td>
+                  </tr>
+                ) : null}
 
-            {!loading && checklists.length > 0 ? (
-              <div className="overflow-hidden rounded-xl border">
-                <div className="hidden grid-cols-[1fr_1.3fr_0.7fr_1fr] gap-3 border-b bg-muted/40 px-4 py-3 text-xs font-semibold text-muted-foreground md:grid">
-                  <span>Tanggal</span>
-                  <span>Kondisi dapur</span>
-                  <span>Foto</span>
-                  <span className="text-right">Aksi</span>
-                </div>
-                {checklists.map((item) => (
-                  <div
-                    key={item.id}
-                    className="grid gap-3 border-b p-4 last:border-0 md:grid-cols-[1fr_1.3fr_0.7fr_1fr] md:items-center"
-                  >
-                    <div>
-                      <p className="text-sm font-medium">
-                        {new Date(item.timestamp).toLocaleDateString("id-ID")}
-                      </p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {new Date(item.timestamp).toLocaleTimeString("id-ID")}
-                      </p>
-                    </div>
-                    <p className="line-clamp-2 text-sm text-muted-foreground">
-                      {item.kondisiDapur}
-                    </p>
-                    <span className="inline-flex w-fit rounded-full border bg-muted/30 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                      3 foto
-                    </span>
-                    <div className="flex flex-wrap justify-start gap-2 md:justify-end">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setViewTarget(item)}
-                      >
-                        <EyeIcon />
-                        View
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openEditReport(item)}
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => setDeleteTarget(item)}
-                      >
-                        <Trash2Icon />
-                        Delete
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </CardContent>
-        </Card>
+                {!loading
+                  ? checklists.map((item) => (
+                      <tr key={item.id} className="border-b last:border-0">
+                        <td className="px-4 py-3">
+                          <p className="font-medium">
+                            {new Date(item.timestamp).toLocaleDateString("id-ID")}
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {new Date(item.timestamp).toLocaleTimeString("id-ID")}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          <p className="line-clamp-2">{item.kondisiDapur}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex rounded-full border bg-muted/30 px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                            3 foto
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setViewTarget(item)}
+                            >
+                              <EyeIcon className="mr-1 h-4 w-4" />
+                              View
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openEditReport(item)}
+                            >
+                              <PencilIcon className="mr-1 h-4 w-4" />
+                              Edit
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                              onClick={() => setDeleteTarget(item)}
+                            >
+                              <Trash2Icon className="mr-1 h-4 w-4" />
+                              Delete
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  : null}
+              </tbody>
+            </table>
+          </div>
+        </section>
         ) : null}
       </section>
 
@@ -929,7 +946,13 @@ export function KitchenChecklistPage({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(viewTarget)} onOpenChange={(open) => !open && setViewTarget(null)}>
+      <Dialog
+        open={Boolean(viewTarget)}
+        onOpenChange={(open) => {
+          if (!open && zoomPhoto) return
+          if (!open) setViewTarget(null)
+        }}
+      >
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Detail Laporan Kebersihan</DialogTitle>
@@ -947,9 +970,11 @@ export function KitchenChecklistPage({
                   { label: "Alat", value: viewTarget.alatPhoto },
                   { label: "Kebersihan", value: viewTarget.kebersihanPhoto },
                 ].map((photo) => (
-                  <div
+                  <button
+                    type="button"
                     key={photo.label}
-                    className="overflow-hidden rounded-xl border bg-muted/30"
+                    className="overflow-hidden rounded-xl border bg-muted/30 text-left transition hover:bg-muted/50"
+                    onClick={() => setZoomPhoto({ label: photo.label, url: photo.value })}
                   >
                     <div className="aspect-video w-full overflow-hidden">
                       <img
@@ -959,9 +984,9 @@ export function KitchenChecklistPage({
                       />
                     </div>
                     <div className="border-t bg-background px-3 py-2 text-xs font-semibold text-muted-foreground">
-                      {photo.label}
+                      {photo.label} · Klik untuk zoom
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
               <div className="rounded-xl border bg-muted/20 p-4">
@@ -974,6 +999,38 @@ export function KitchenChecklistPage({
           ) : null}
         </DialogContent>
       </Dialog>
+
+      {zoomPhoto ? createPortal(
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => setZoomPhoto(null)}
+        >
+          <div
+            className="relative max-h-[90svh] w-full max-w-5xl rounded-xl bg-popover p-3 shadow-lg"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="absolute right-2 top-2 bg-background/80"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => setZoomPhoto(null)}
+            >
+              ×
+            </Button>
+            <p className="mb-2 pr-10 text-sm font-medium">{zoomPhoto.label}</p>
+            <img
+              src={zoomPhoto.url}
+              alt={zoomPhoto.label}
+              className="max-h-[82svh] w-full rounded-lg object-contain"
+            />
+          </div>
+        </div>,
+        document.body
+      ) : null}
 
       <AlertDialog
         open={Boolean(deleteTarget)}

@@ -25,6 +25,49 @@ function cleanOptionalText(value?: string) {
   return cleaned ? cleaned : null
 }
 
+function isUuid(value?: string | null) {
+  return Boolean(
+    value?.match(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    )
+  )
+}
+
+async function resolveSppgOwnerId(user: {
+  id: string
+  role: UserRole | string
+  username: string
+}) {
+  if (user.role !== UserRole.SPPG) {
+    return null
+  }
+
+  if (isUuid(user.id)) {
+    return user.id
+  }
+
+  const existingUser = await prisma.user.findUnique({
+    where: { username: user.username },
+    select: { id: true, role: true },
+  })
+
+  if (existingUser?.role === UserRole.SPPG) {
+    return existingUser.id
+  }
+
+  const passwordHash = await bcrypt.hash(`${user.username}-demo`, 12)
+  const createdUser = await prisma.user.create({
+    data: {
+      passwordHash,
+      role: UserRole.SPPG,
+      username: user.username,
+    },
+    select: { id: true },
+  })
+
+  return createdUser.id
+}
+
 function toSchoolAccountResponse(school: {
   id: string
   name: string
@@ -63,6 +106,82 @@ function toSchoolAccountResponse(school: {
   }
 }
 
+type RawSchoolAccount = {
+  id: string
+  name: string
+  npsn: string | null
+  address: string | null
+  created_at: Date
+  sppg_id: string | null
+  sppg_username: string | null
+  account_id: string | null
+  account_username: string | null
+  progress_status: string | null
+  progress_notes: string | null
+  progress_updated_at: Date | null
+}
+
+function toRawSchoolAccountResponse(school: RawSchoolAccount) {
+  return {
+    id: school.id,
+    name: school.name,
+    npsn: school.npsn,
+    address: school.address,
+    createdAt: school.created_at.toISOString(),
+    sppg: {
+      id: school.sppg_id ?? "",
+      username: school.sppg_username ?? "-",
+    },
+    account: school.account_id
+      ? {
+          id: school.account_id,
+          username: school.account_username ?? "-",
+        }
+      : null,
+    progress: school.progress_status
+      ? {
+          status: school.progress_status,
+          notes: school.progress_notes,
+          updatedAt: (school.progress_updated_at ?? school.created_at).toISOString(),
+        }
+      : null,
+  }
+}
+
+async function findSchoolAccountsForUser(user: {
+  id: string
+  role: UserRole | string
+  username: string
+}) {
+  const sppgFilter =
+    user.role === "SPPG" ? await resolveSppgOwnerId(user) : null
+
+  return prisma.$queryRaw<RawSchoolAccount[]>`
+    SELECT
+      s.id::text AS id,
+      s.name,
+      s.npsn,
+      s.address,
+      s.created_at,
+      s.sppg_id::text AS sppg_id,
+      sppg.username AS sppg_username,
+      account.id::text AS account_id,
+      account.username AS account_username,
+      progress.status::text AS progress_status,
+      progress.notes AS progress_notes,
+      progress.updated_at AS progress_updated_at
+    FROM "public"."schools" s
+    LEFT JOIN "public"."users" sppg
+      ON sppg.id::text = s.sppg_id::text
+    LEFT JOIN "public"."users" account
+      ON account.school_id::text = s.id::text
+    LEFT JOIN "public"."school_progress" progress
+      ON progress.school_id::text = s.id::text
+    WHERE ${sppgFilter}::text IS NULL OR s.sppg_id::text = ${sppgFilter}
+    ORDER BY s.created_at DESC
+  `
+}
+
 async function requireSppgOrSuperAdmin(
   req: Parameters<typeof getCurrentUser>[0]
 ): Promise<SppgAccountCheck> {
@@ -90,20 +209,9 @@ schoolAccountsRouter.get("/", async (req, res, next) => {
       return res.status(auth.status).json({ message: auth.message })
     }
 
-    const schools = await prisma.school.findMany({
-      where:
-        auth.currentUser.role === "SPPG"
-          ? { sppgId: auth.currentUser.id }
-          : undefined,
-      include: {
-        account: { select: { id: true, username: true } },
-        progress: true,
-        sppg: { select: { id: true, username: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    })
+    const schools = await findSchoolAccountsForUser(auth.currentUser)
 
-    return res.json({ schools: schools.map(toSchoolAccountResponse) })
+    return res.json({ schools: schools.map(toRawSchoolAccountResponse) })
   } catch (error) {
     next(error)
   }
@@ -117,10 +225,9 @@ schoolAccountsRouter.post("/", async (req, res, next) => {
       return res.status(auth.status).json({ message: auth.message })
     }
 
-    const { address, npsn, password, schoolName, sppgId, username } =
+    const { address, password, schoolName, sppgId, username } =
       req.body as {
         address?: string
-        npsn?: string
         password?: string
         schoolName?: string
         sppgId?: string
@@ -129,7 +236,9 @@ schoolAccountsRouter.post("/", async (req, res, next) => {
     const normalizedUsername = normalizeUsername(username)
     const normalizedSchoolName = schoolName?.trim()
     const ownerSppgId =
-      auth.currentUser.role === "SPPG" ? auth.currentUser.id : sppgId
+      auth.currentUser.role === "SPPG"
+        ? await resolveSppgOwnerId(auth.currentUser)
+        : sppgId
 
     if (!normalizedUsername || !password || !normalizedSchoolName) {
       return res.status(400).json({
@@ -154,6 +263,12 @@ schoolAccountsRouter.post("/", async (req, res, next) => {
       })
     }
 
+    if (!isUuid(ownerSppgId)) {
+      return res.status(400).json({
+        message: "SPPG penanggung jawab tidak valid. Silakan pilih akun SPPG database.",
+      })
+    }
+
     const sppg = await prisma.user.findUnique({
       where: { id: ownerSppgId },
       select: { id: true, role: true },
@@ -171,7 +286,7 @@ schoolAccountsRouter.post("/", async (req, res, next) => {
         data: {
           address: cleanOptionalText(address),
           name: normalizedSchoolName,
-          npsn: cleanOptionalText(npsn),
+          npsn: null,
           sppgId: ownerSppgId,
           progress: {
             create: {},
@@ -207,6 +322,164 @@ schoolAccountsRouter.post("/", async (req, res, next) => {
       return res.status(409).json({ message: "Username sudah digunakan." })
     }
 
+    next(error)
+  }
+})
+
+schoolAccountsRouter.patch("/:id", async (req, res, next) => {
+  try {
+    const auth = await requireSppgOrSuperAdmin(req)
+
+    if ("status" in auth) {
+      return res.status(auth.status).json({ message: auth.message })
+    }
+
+    const { address, password, schoolName, sppgId, username } =
+      req.body as {
+        address?: string
+        password?: string
+        schoolName?: string
+        sppgId?: string
+        username?: string
+      }
+    const normalizedUsername = normalizeUsername(username)
+    const normalizedSchoolName = schoolName?.trim()
+    const ownerSppgId =
+      auth.currentUser.role === "SPPG"
+        ? await resolveSppgOwnerId(auth.currentUser)
+        : sppgId
+
+    if (schoolName !== undefined && !normalizedSchoolName) {
+      return res.status(400).json({ message: "Nama sekolah wajib diisi." })
+    }
+
+    if (
+      username !== undefined &&
+      (!normalizedUsername || !/^[a-z0-9_]{3,32}$/.test(normalizedUsername))
+    ) {
+      return res.status(400).json({
+        message:
+          "Username harus 3-32 karakter dan hanya boleh berisi huruf kecil, angka, atau underscore.",
+      })
+    }
+
+    if (password !== undefined && password.length > 0 && password.length < 6) {
+      return res.status(400).json({ message: "Password minimal 6 karakter." })
+    }
+
+    if (auth.currentUser.role === "SUPER_ADMIN" && sppgId && !isUuid(sppgId)) {
+      return res.status(400).json({
+        message: "SPPG penanggung jawab tidak valid.",
+      })
+    }
+
+    const existingSchool = await prisma.school.findFirst({
+      where: {
+        id: req.params.id,
+        ...(auth.currentUser.role === "SPPG"
+          ? { sppgId: ownerSppgId as string }
+          : {}),
+      },
+      select: { id: true },
+    })
+
+    if (!existingSchool) {
+      return res.status(404).json({ message: "Akun sekolah tidak ditemukan." })
+    }
+
+    const school = await prisma.$transaction(async (tx) => {
+      await tx.school.update({
+        where: { id: req.params.id },
+        data: {
+          ...(address !== undefined ? { address: cleanOptionalText(address) } : {}),
+          ...(normalizedSchoolName ? { name: normalizedSchoolName } : {}),
+          ...(auth.currentUser.role === "SUPER_ADMIN" && sppgId
+            ? { sppgId }
+            : {}),
+        },
+      })
+
+      if (normalizedUsername || password) {
+        const accountData: {
+          passwordHash?: string
+          username?: string
+        } = {}
+
+        if (normalizedUsername) {
+          accountData.username = normalizedUsername
+        }
+
+        if (password) {
+          accountData.passwordHash = await bcrypt.hash(password, 12)
+        }
+
+        await tx.user.updateMany({
+          where: { schoolId: req.params.id, role: UserRole.SEKOLAH },
+          data: accountData,
+        })
+      }
+
+      return tx.school.findUniqueOrThrow({
+        where: { id: req.params.id },
+        include: {
+          account: { select: { id: true, username: true } },
+          progress: true,
+          sppg: { select: { id: true, username: true } },
+        },
+      })
+    })
+
+    return res.json({ school: toSchoolAccountResponse(school) })
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return res.status(409).json({ message: "Username sudah digunakan." })
+    }
+
+    next(error)
+  }
+})
+
+schoolAccountsRouter.delete("/:id", async (req, res, next) => {
+  try {
+    const auth = await requireSppgOrSuperAdmin(req)
+
+    if ("status" in auth) {
+      return res.status(auth.status).json({ message: auth.message })
+    }
+
+    const ownerSppgId =
+      auth.currentUser.role === "SPPG"
+        ? await resolveSppgOwnerId(auth.currentUser)
+        : null
+
+    const existingSchool = await prisma.school.findFirst({
+      where: {
+        id: req.params.id,
+        ...(auth.currentUser.role === "SPPG"
+          ? { sppgId: ownerSppgId as string }
+          : {}),
+      },
+      select: { id: true },
+    })
+
+    if (!existingSchool) {
+      return res.status(404).json({ message: "Akun sekolah tidak ditemukan." })
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.user.deleteMany({
+        where: { schoolId: req.params.id, role: UserRole.SEKOLAH },
+      })
+      await tx.school.delete({
+        where: { id: req.params.id },
+      })
+    })
+
+    return res.status(204).send()
+  } catch (error) {
     next(error)
   }
 })

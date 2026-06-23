@@ -3,12 +3,26 @@ import { useEffect, useMemo, useState } from "react"
 import {
   EyeIcon,
   EyeOffIcon,
+  PencilIcon,
   PlusIcon,
   SchoolIcon,
+  Trash2Icon,
+  TriangleAlertIcon,
   UserRoundPlusIcon,
 } from "lucide-react"
 
 import { AlertToast } from "@/components/ui/alert-toast"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -22,11 +36,16 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useAuth } from "@/features/auth/AuthProvider"
 import { api, type ManagedUser, type SchoolAccount } from "@/lib/api"
+import {
+  getCachedPageData,
+  pageCacheKeys,
+  setCachedPageData,
+} from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 
 type FormState = {
   address: string
-  npsn: string
+  id?: string
   password: string
   schoolName: string
   sppgId: string
@@ -35,34 +54,32 @@ type FormState = {
 
 const initialForm: FormState = {
   address: "",
-  npsn: "",
   password: "",
   schoolName: "",
   sppgId: "",
   username: "",
 }
 
-const progressLabels: Record<string, string> = {
-  BELUM_ADA: "Belum ada",
-  MENUNGGU_PRODUKSI: "Menunggu produksi",
-  DIPRODUKSI: "Diproduksi",
-  SIAP_DIKIRIM: "Siap dikirim",
-  DIKIRIM: "Dikirim",
-  DITERIMA: "Diterima",
-  BERMASALAH: "Bermasalah",
-}
-
 export function SchoolAccountsPage() {
   const { profile } = useAuth()
+  const cachedSchools = getCachedPageData<SchoolAccount[]>(
+    pageCacheKeys.schoolAccounts
+  )
+  const cachedUsers = getCachedPageData<ManagedUser[]>(pageCacheKeys.users)
   const [alertMessage, setAlertMessage] = useState<string | null>(null)
   const [dialogError, setDialogError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(initialForm)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(!cachedSchools)
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
-  const [schools, setSchools] = useState<SchoolAccount[]>([])
-  const [sppgUsers, setSppgUsers] = useState<ManagedUser[]>([])
+  const [deleteTarget, setDeleteTarget] = useState<SchoolAccount | null>(null)
+  const [schools, setSchools] = useState<SchoolAccount[]>(
+    () => cachedSchools ?? []
+  )
+  const [sppgUsers, setSppgUsers] = useState<ManagedUser[]>(() =>
+    (cachedUsers ?? []).filter((user) => user.role === "SPPG")
+  )
 
   const sortedSchools = useMemo(
     () => [...schools].sort((a, b) => a.name.localeCompare(b.name)),
@@ -70,6 +87,13 @@ export function SchoolAccountsPage() {
   )
 
   async function loadData() {
+    if (cachedSchools && (profile?.role !== "SUPER_ADMIN" || cachedUsers)) {
+      setSchools(cachedSchools)
+      setSppgUsers((cachedUsers ?? []).filter((user) => user.role === "SPPG"))
+      setIsLoading(false)
+      return
+    }
+
     setIsLoading(true)
     setError(null)
 
@@ -81,7 +105,10 @@ export function SchoolAccountsPage() {
           : Promise.resolve({ users: [] }),
       ])
 
-      setSchools(schoolResponse.schools)
+      setSchools(setCachedPageData(pageCacheKeys.schoolAccounts, schoolResponse.schools))
+      if (profile?.role === "SUPER_ADMIN") {
+        setCachedPageData(pageCacheKeys.users, usersResponse.users)
+      }
       setSppgUsers(usersResponse.users.filter((user) => user.role === "SPPG"))
     } catch (error) {
       setError(
@@ -105,6 +132,20 @@ export function SchoolAccountsPage() {
     setIsDialogOpen(true)
   }
 
+  function openEditDialog(school: SchoolAccount) {
+    setDialogError(null)
+    setForm({
+      address: school.address ?? "",
+      id: school.id,
+      password: "",
+      schoolName: school.name,
+      sppgId: school.sppg.id,
+      username: school.account?.username ?? "",
+    })
+    setIsPasswordVisible(false)
+    setIsDialogOpen(true)
+  }
+
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setAlertMessage(null)
@@ -112,22 +153,66 @@ export function SchoolAccountsPage() {
     setError(null)
 
     try {
-      const response = await api.schoolAccounts.create({
+      const payload = {
         address: form.address,
-        npsn: form.npsn,
-        password: form.password,
+        ...(form.password ? { password: form.password } : {}),
         schoolName: form.schoolName,
         sppgId: form.sppgId || undefined,
         username: form.username,
-      })
+      }
 
-      setSchools((currentSchools) => [...currentSchools, response.school])
-      setAlertMessage("Akun sekolah berhasil dibuat.")
+      if (form.id) {
+        const response = await api.schoolAccounts.update(form.id, payload)
+        setSchools((currentSchools) =>
+          setCachedPageData(
+            pageCacheKeys.schoolAccounts,
+            currentSchools.map((school) =>
+              school.id === response.school.id ? response.school : school
+            )
+          )
+        )
+        setAlertMessage("Akun sekolah berhasil diperbarui.")
+      } else {
+        const response = await api.schoolAccounts.create({
+          ...payload,
+          password: form.password,
+        })
+        setSchools((currentSchools) =>
+          setCachedPageData(pageCacheKeys.schoolAccounts, [
+            ...currentSchools,
+            response.school,
+          ])
+        )
+        setAlertMessage("Akun sekolah berhasil dibuat.")
+      }
+
       setForm(initialForm)
       setIsDialogOpen(false)
     } catch (error) {
       setDialogError(
         error instanceof Error ? error.message : "Gagal membuat akun sekolah."
+      )
+    }
+  }
+
+  async function deleteSchoolAccount() {
+    if (!deleteTarget) return
+    setAlertMessage(null)
+    setError(null)
+
+    try {
+      await api.schoolAccounts.delete(deleteTarget.id)
+      setSchools((currentSchools) =>
+        setCachedPageData(
+          pageCacheKeys.schoolAccounts,
+          currentSchools.filter((school) => school.id !== deleteTarget.id)
+        )
+      )
+      setDeleteTarget(null)
+      setAlertMessage("Akun sekolah berhasil dihapus.")
+    } catch (error) {
+      setError(
+        error instanceof Error ? error.message : "Gagal menghapus akun sekolah."
       )
     }
   }
@@ -158,6 +243,20 @@ export function SchoolAccountsPage() {
         />
       ) : null}
 
+      <section className="pb-1">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Master data
+          </p>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Akun Sekolah
+          </h1>
+          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+            Kelola akun sekolah dan alamat sekolah untuk akses distribusi dari SPPG.
+          </p>
+        </div>
+      </section>
+
       <section className="rounded-lg border bg-card text-card-foreground">
         <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -183,8 +282,8 @@ export function SchoolAccountsPage() {
                 <th className="px-4 py-3 font-medium">Sekolah</th>
                 <th className="px-4 py-3 font-medium">Username</th>
                 <th className="px-4 py-3 font-medium">SPPG</th>
-                <th className="px-4 py-3 font-medium">Progress</th>
                 <th className="px-4 py-3 font-medium">Dibuat</th>
+                <th className="px-4 py-3 text-right font-medium">Aksi</th>
               </tr>
             </thead>
             <tbody>
@@ -201,10 +300,10 @@ export function SchoolAccountsPage() {
                         <Skeleton className="h-4 w-28" />
                       </td>
                       <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-4 w-20" />
                       </td>
                       <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="ml-auto h-8 w-28" />
                       </td>
                     </tr>
                   ))
@@ -230,15 +329,31 @@ export function SchoolAccountsPage() {
                   <td className="px-4 py-3 text-muted-foreground">
                     {school.sppg.username}
                   </td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex rounded-full bg-muted px-2.5 py-1 text-xs font-medium">
-                      {progressLabels[school.progress?.status ?? "BELUM_ADA"] ??
-                        school.progress?.status ??
-                        "Belum ada"}
-                    </span>
-                  </td>
                   <td className="px-4 py-3 text-muted-foreground">
                     {new Date(school.createdAt).toLocaleDateString("id-ID")}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => openEditDialog(school)}
+                      >
+                        <PencilIcon />
+                        Edit
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        onClick={() => setDeleteTarget(school)}
+                      >
+                        <Trash2Icon />
+                        Delete
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -270,10 +385,13 @@ export function SchoolAccountsPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Tambah akun sekolah</DialogTitle>
+            <DialogTitle>
+              {form.id ? "Edit akun sekolah" : "Tambah akun sekolah"}
+            </DialogTitle>
             <DialogDescription>
-              Satu akun dipakai bersama oleh pihak sekolah untuk melihat dan
-              memperbarui progress sekolahnya.
+              {form.id
+                ? "Perbarui data sekolah dan akun login sekolah."
+                : "Satu akun dipakai bersama oleh pihak sekolah untuk melihat dan memperbarui progress sekolahnya."}
             </DialogDescription>
           </DialogHeader>
 
@@ -294,18 +412,7 @@ export function SchoolAccountsPage() {
             </label>
 
             <label className="grid gap-2 text-sm font-medium">
-              NPSN
-              <Input
-                value={form.npsn}
-                onChange={(event) =>
-                  setForm((value) => ({ ...value, npsn: event.target.value }))
-                }
-                placeholder="Opsional"
-              />
-            </label>
-
-            <label className="grid gap-2 text-sm font-medium">
-              Alamat tujuan
+              Alamat sekolah
               <Input
                 value={form.address}
                 onChange={(event) =>
@@ -314,7 +421,7 @@ export function SchoolAccountsPage() {
                     address: event.target.value,
                   }))
                 }
-                placeholder="Alamat pengiriman makanan"
+                placeholder="Contoh: Jl. Merdeka No. 10"
               />
             </label>
 
@@ -371,7 +478,7 @@ export function SchoolAccountsPage() {
                   className="pr-10"
                   minLength={6}
                   placeholder="Minimal 6 karakter"
-                  required
+                  required={!form.id}
                   type={isPasswordVisible ? "text" : "password"}
                 />
                 <Button
@@ -405,12 +512,38 @@ export function SchoolAccountsPage() {
               </Button>
               <Button type="submit">
                 <PlusIcon />
-                Tambah
+                {form.id ? "Simpan" : "Tambah"}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia>
+              <TriangleAlertIcon />
+            </AlertDialogMedia>
+            <AlertDialogTitle>Hapus akun sekolah?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Akun {deleteTarget?.name} dan akses login sekolahnya akan dihapus permanen.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={(event) => {
+                event.preventDefault()
+                void deleteSchoolAccount()
+              }}
+            >
+              Hapus
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </DashboardShell>
   )
 }

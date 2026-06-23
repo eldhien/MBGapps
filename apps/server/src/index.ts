@@ -5,6 +5,7 @@ import { authRouter } from "./auth/auth.routes.js";
 import { dashboardRouter } from "./dashboard/dashboard.routes.js";
 import { batchesRouter } from "./batches/batches.routes.js";
 import { distributionsRouter } from "./distributions/distributions.routes.js";
+import { driversRouter } from "./drivers/drivers.routes.js";
 import { batchRouter } from "./batch/batch.routes.js";
 import { uploadRouter } from "./batch/batch.upload.js";
 import { env } from "./config/env.js";
@@ -12,6 +13,10 @@ import { foodReportsRouter } from "./food-reports/food-reports.routes.js";
 import { kitchenChecklistRouter } from "./kitchen-checklist/kitchen-checklist.routes.js";
 import { studentComplaintsRouter } from "./student-complaints/student-complaints.routes.js";
 import { menuRouter } from "./menu/menu.routes.js";
+import {
+  productionDistributionsRouter,
+  schoolDistributionsRouter,
+} from "./production-distributions/production-distributions.routes.js";
 import { schoolAccountsRouter } from "./school-accounts/school-accounts.routes.js";
 import { settingsRouter } from "./settings/settings.routes.js";
 import { usersRouter } from "./users/users.routes.js";
@@ -39,7 +44,10 @@ app.use("/cleanliness-reports", kitchenChecklistRouter);
 app.use("/kitchen-checklist", kitchenChecklistRouter);
 app.use("/student-complaints", studentComplaintsRouter);
 app.use("/users", usersRouter);
-app.use("/batches", batchRouter);
+app.use("/drivers", driversRouter);
+app.use("/production-batches", batchRouter);
+app.use("/production-distributions", productionDistributionsRouter);
+app.use("/school-distributions", schoolDistributionsRouter);
 app.use("/batches", uploadRouter);
 app.use("/menus", menuRouter);
 app.use("/school-accounts", schoolAccountsRouter);

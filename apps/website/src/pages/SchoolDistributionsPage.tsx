@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react"
 import { CheckIcon, CheckCircle2Icon, ClockIcon, TruckIcon, PackageCheckIcon, XIcon, ImageIcon, ZoomInIcon, FlagIcon } from "lucide-react"
-import { QRCodeSVG } from "qrcode.react"
 import { createPortal } from "react-dom"
 import { useNavigate } from "react-router-dom"
 
@@ -471,39 +470,7 @@ export function SchoolDistributionsPage() {
     )
   }, [])
 
-  function downloadQr(distribution: SchoolDistribution) {
-    const svg = document.getElementById(`qr-${distribution.id}`)
-    if (!(svg instanceof SVGElement)) { setError("QR belum siap untuk diunduh."); return }
-    svg.setAttribute("xmlns", "http://www.w3.org/2000/svg")
-    const source = new XMLSerializer().serializeToString(svg)
-    const svgBlob = new Blob([source], { type: "image/svg+xml;charset=utf-8" })
-    const svgUrl = URL.createObjectURL(svgBlob)
-    const image = new Image()
-    image.onload = () => {
-      const padding = 24
-      const size = Math.max(image.width, image.height) + padding * 2
-      const canvas = document.createElement("canvas")
-      canvas.width = size
-      canvas.height = size
-      const context = canvas.getContext("2d")
-      if (!context) { URL.revokeObjectURL(svgUrl); return }
-      context.fillStyle = "#ffffff"
-      context.fillRect(0, 0, size, size)
-      context.drawImage(image, padding, padding)
-      canvas.toBlob((blob) => {
-        URL.revokeObjectURL(svgUrl)
-        if (!blob) return
-        const pngUrl = URL.createObjectURL(blob)
-        const link = document.createElement("a")
-        link.href = pngUrl
-        link.download = `QR-${distribution.batch.id}.png`
-        link.click()
-        URL.revokeObjectURL(pngUrl)
-      }, "image/png")
-    }
-    image.onerror = () => URL.revokeObjectURL(svgUrl)
-    image.src = svgUrl
-  }
+
 
   async function executeDiterima() {
     if (!confirmDiterimaPending) return
@@ -589,7 +556,6 @@ export function SchoolDistributionsPage() {
             : null}
 
           {distributions.map((distribution) => {
-            const qrUrl = `${window.location.origin}/batch-info/${distribution.batch.id}`
             const isFinal =
               distribution.status === "DITERIMA" || distribution.status === "DITOLAK"
             const step = getStep(distribution)
@@ -597,22 +563,8 @@ export function SchoolDistributionsPage() {
             return (
               <article
                 key={distribution.id}
-                className="grid gap-4 rounded-lg border p-4 md:grid-cols-[140px_1fr_auto]"
+                className="grid gap-4 rounded-lg border p-4 md:grid-cols-[1fr_auto]"
               >
-                <div className="grid w-fit gap-2">
-                  <div className="w-fit rounded-lg border bg-white p-2">
-                    <QRCodeSVG id={`qr-${distribution.id}`} value={qrUrl} size={112} />
-                  </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => downloadQr(distribution)}
-                  >
-                    Unduh QR
-                  </Button>
-                </div>
-
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="font-semibold">{distribution.batch.id}</h3>

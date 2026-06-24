@@ -21,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api } from "@/lib/api"
+import { cn } from "@/lib/utils"
 import {
   getCachedPageData,
   pageCacheKeys,
@@ -28,9 +29,10 @@ import {
   subscribePageCache,
 } from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
-import { EyeIcon, PencilIcon, PlusIcon, Trash2Icon, TruckIcon, TriangleAlertIcon } from "lucide-react"
+import { CheckCircle2Icon, EyeIcon, PencilIcon, PlusIcon, Trash2Icon, TruckIcon, TriangleAlertIcon } from "lucide-react"
 import { QRCodeSVG } from "qrcode.react"
 import { useEffect, useState } from "react"
+import { createPortal } from "react-dom"
 import { Link, useNavigate } from "react-router-dom"
 
 type KomposisiItem = {
@@ -547,9 +549,12 @@ export function BatchListPage({
                         }
                         className="h-24 w-full object-cover transition group-hover:opacity-90"
                       />
-                      <p className="border-t px-2 py-1 text-xs text-muted-foreground">
+                      <p className={cn(
+                        "border-t px-2 py-1 text-xs",
+                        editFotoPreview ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground"
+                      )}>
                         {editFotoPreview
-                          ? "Preview foto baru. Klik zoom."
+                          ? "Foto siap diganti. Klik zoom."
                           : "Foto saat ini. Klik zoom."}
                       </p>
                     </button>
@@ -558,21 +563,50 @@ export function BatchListPage({
                       Belum ada foto makanan.
                     </div>
                   )}
-                  <div className="grid gap-2 rounded-xl border bg-muted/10 p-3">
-                    <p className="text-xs font-normal text-muted-foreground">
-                      Foto bisa diganti dengan memilih file baru.
-                    </p>
-                    <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-md border bg-background px-3 text-sm font-medium shadow-xs hover:bg-accent hover:text-accent-foreground">
-                      Ganti foto
-                      <Input
-                        type="file"
-                        accept="image/*"
-                        className="sr-only"
-                        onChange={(event) =>
-                          setEditFotoMakanan(event.target.files?.[0] || null)
-                        }
-                      />
-                    </label>
+                  <div className={cn(
+                    "grid gap-2 rounded-xl border p-3",
+                    editFotoMakanan ? "bg-primary/5 border-primary/20" : "bg-muted/10"
+                  )}>
+                    <div className={cn(
+                      "text-xs font-normal",
+                      editFotoMakanan ? "text-primary font-medium flex items-center gap-1.5" : "text-muted-foreground"
+                    )}>
+                      {editFotoMakanan ? (
+                        <>
+                          <CheckCircle2Icon className="h-4 w-4" />
+                          File baru dipilih
+                        </>
+                      ) : (
+                        "Foto bisa diganti dengan file baru."
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className={cn(
+                        "inline-flex h-9 cursor-pointer items-center justify-center rounded-md border bg-background px-3 text-sm font-medium shadow-xs hover:bg-accent hover:text-accent-foreground",
+                        editFotoMakanan && "border-primary/20 text-primary"
+                      )}>
+                        Ganti foto
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={(event) =>
+                            setEditFotoMakanan(event.target.files?.[0] || null)
+                          }
+                        />
+                      </label>
+                      {editFotoMakanan && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="h-9 w-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => setEditFotoMakanan(null)}
+                        >
+                          <Trash2Icon className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                     <p className="truncate text-xs font-normal text-muted-foreground">
                       {editFotoMakanan?.name ?? "Belum memilih file baru."}
                     </p>
@@ -647,20 +681,22 @@ export function BatchListPage({
         </DialogContent>
       </Dialog>
 
-      {zoomFotoUrl ? (
+      {zoomFotoUrl ? createPortal(
         <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm pointer-events-auto"
+          onPointerDown={(event) => event.stopPropagation()}
           onClick={() => setZoomFotoUrl(null)}
         >
           <div
-            className="relative max-h-[90svh] w-full max-w-5xl rounded-xl bg-popover p-3 shadow-lg"
+            className="relative flex max-h-[95svh] h-[95svh] w-[95vw] flex-col overflow-hidden rounded-xl bg-popover p-3 shadow-lg"
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           >
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
-              className="absolute right-2 top-2 bg-background/80"
+              className="absolute right-2 top-2 z-10 bg-background/80"
               onClick={() => setZoomFotoUrl(null)}
             >
               ×
@@ -668,10 +704,11 @@ export function BatchListPage({
             <img
               src={zoomFotoUrl}
               alt="Preview foto makanan"
-              className="max-h-[84svh] w-full rounded-lg object-contain"
+              className="h-full w-full rounded-lg object-contain"
             />
           </div>
-        </div>
+        </div>,
+        document.body
       ) : null}
 
       <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>

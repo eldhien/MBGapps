@@ -173,12 +173,21 @@ export type SchoolDistribution = {
   status: string
   receivedAt: string | null
   rejectedReason: string | null
+  buktiTerimaFotoUrl: string | null
   distribution: {
     id: string
     waktuKirim: string | null
     status: string
+    fotoDikemasUrl: string | null
   }
-  batch: any
+  batch: {
+    id: string
+    status: string
+    createdAt: string
+    menu?: { name: string } | null
+    driver?: { name: string; vehicleNumber?: string | null } | null
+    foto?: { id: string; jenis: string; url: string }[]
+  }
 }
 
 async function request<T>(path: string, options: RequestInit = {}) {
@@ -486,8 +495,26 @@ export const api = {
     },
     updateStatus(
       id: string,
-      payload: { rejectedReason?: string; status: "DITERIMA" | "DITOLAK" }
+      payload: { rejectedReason?: string; status: "DITERIMA" | "DITOLAK"; file?: File | null }
     ) {
+      if (payload.status === "DITERIMA" && payload.file) {
+        const formData = new FormData()
+        formData.append("status", payload.status)
+        formData.append("file", payload.file)
+        if (payload.rejectedReason) formData.append("rejectedReason", payload.rejectedReason)
+        const token = getAccessToken()
+        return fetch(`${API_URL}/school-distributions/${id}/status`, {
+          method: "PATCH",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body: formData,
+        }).then(async (res) => {
+          if (!res.ok) {
+            const payload = await res.json().catch(() => null)
+            throw new Error(payload?.message ?? "Gagal memperbarui status.")
+          }
+          return res.json() as Promise<{ distribution: SchoolDistribution }>
+        })
+      }
       return request<{ distribution: SchoolDistribution }>(
         `/school-distributions/${id}/status`,
         {

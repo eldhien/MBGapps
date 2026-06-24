@@ -307,6 +307,8 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
           },
         },
       })
+    }, {
+      timeout: 15000,
     })
 
     res.json(updatedBatch)

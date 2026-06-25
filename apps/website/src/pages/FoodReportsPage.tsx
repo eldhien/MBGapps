@@ -23,6 +23,7 @@ import {
   ThermometerIcon,
 } from "lucide-react"
 import { useEffect, useState, type FormEvent } from "react"
+import { useSearchParams } from "react-router-dom"
 
 const categoryOptions: { label: string; value: FoodReportCategory }[] = [
   { label: "Basi", value: "BASI" },
@@ -64,6 +65,8 @@ export function FoodReportsPage({
 }: {
   mode?: "create" | "history"
 }) {
+  const [searchParams] = useSearchParams()
+  const prefilledBatchId = searchParams.get("batchId") ?? ""
   const cachedReports = getCachedPageData<FoodReport[]>(
     pageCacheKeys.foodReports
   )
@@ -74,7 +77,7 @@ export function FoodReportsPage({
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [form, setForm] = useState(initialForm)
+  const [form, setForm] = useState({ ...initialForm, batchId: prefilledBatchId })
 
   useEffect(() => {
     void loadData()

@@ -8,6 +8,15 @@ import { Router } from "express"
 
 import { getCurrentUser } from "../auth/session.js"
 import { prisma } from "../lib/prisma.js"
+import multer from "multer"
+import { fileBufferToDataUrl, uploadImageToCloudinary } from "../lib/cloudinary.js"
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 8 * 1024 * 1024,
+  },
+})
 
 export const productionDistributionsRouter = Router()
 
@@ -645,15 +654,18 @@ function toSchoolDistributionResponse(item: any) {
     status: item.status,
     receivedAt: item.receivedAt?.toISOString() ?? null,
     rejectedReason: item.rejectedReason,
+    buktiTerimaFotoUrl: item.buktiTerimaFotoUrl ?? null,
     distribution: {
       id: item.distribution.id,
       waktuKirim: item.distribution.waktuKirim?.toISOString() ?? null,
       status: item.distribution.status,
+      fotoDikemasUrl: item.distribution.fotoDikemasUrl ?? null,
     },
     batch: {
       id: item.distribution.batch.id,
       totalPorsi: item.distribution.batch.totalPorsi,
       status: item.distribution.batch.status,
+      createdAt: item.distribution.batch.createdAt?.toISOString() ?? null,
       menu: item.distribution.batch.menu,
       driver: item.distribution.batch.driver,
       foto: item.distribution.batch.foto,
@@ -677,6 +689,13 @@ schoolDistributionsRouter.get("/", async (req, res, next) => {
       })
     }
 
+    // Get the SPPG that manages this school
+    const schoolRecord = await prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { sppgId: true },
+    })
+
+    // 1. Fetch existing BatchDistributionSchool records (batches already in distribution)
     const distributions = await prisma.batchDistributionSchool.findMany({
       where: { schoolId },
       include: {
@@ -695,15 +714,84 @@ schoolDistributionsRouter.get("/", async (req, res, next) => {
       orderBy: { createdAt: "desc" },
     })
 
+    // Collect batchIds that already have a distribution school record (avoid duplicates)
+    const distributedBatchIds = new Set(
+      distributions.map((d) => d.distribution.batchId)
+    )
+
+    // 2. Fetch ALL batches created today by the SPPG managing this school
+    //    that DON'T yet have a distribution record for this school
+    //    Filter: petugasId = sppgId (SPPG created it directly) OR petugasId IS NULL (system batch)
+    const undistributedBatches = schoolRecord?.sppgId
+      ? await prisma.batchProduksi.findMany({
+          where: {
+            id: { notIn: [...distributedBatchIds] },
+            OR: [
+              { petugasId: schoolRecord.sppgId }, // SPPG created directly
+              { petugasId: null },                 // No assigned petugas (SPPG system)
+            ],
+            createdAt: {
+              gte: (() => {
+                const d = new Date()
+                d.setHours(0, 0, 0, 0)
+                return d
+              })(),
+              lte: (() => {
+                const d = new Date()
+                d.setHours(23, 59, 59, 999)
+                return d
+              })(),
+            },
+          },
+          include: {
+            driver: true,
+            foto: true,
+            menu: true,
+          },
+          orderBy: { createdAt: "desc" },
+        })
+      : []
+
+
+    // Convert undistributed batch entries to the same response shape
+    const virtualDistributions = undistributedBatches.map((batch) => ({
+      id: `virtual-${batch.id}`,
+      jumlahPorsi: batch.totalPorsi,
+      status: "MENUNGGU",
+      receivedAt: null,
+      rejectedReason: null,
+      buktiTerimaFotoUrl: null,
+      distribution: {
+        id: `virtual-dist-${batch.id}`,
+        waktuKirim: null,
+        status: "DRAFT",
+        fotoDikemasUrl: null,
+      },
+      batch: {
+        id: batch.id,
+        totalPorsi: batch.totalPorsi,
+        status: batch.status,
+        createdAt: batch.createdAt?.toISOString() ?? null,
+        menu: batch.menu,
+        driver: batch.driver,
+        foto: batch.foto,
+      },
+    }))
+
     return res.json({
-      distributions: distributions.map(toSchoolDistributionResponse),
+      distributions: [
+        ...distributions.map(toSchoolDistributionResponse),
+        ...virtualDistributions,
+      ],
     })
   } catch (error) {
     next(error)
   }
 })
 
-schoolDistributionsRouter.patch("/:id/status", async (req, res, next) => {
+
+
+schoolDistributionsRouter.patch("/:id/status", upload.single("file"), async (req, res, next) => {
   try {
     const currentUser = await getCurrentUser(req)
 
@@ -737,6 +825,24 @@ schoolDistributionsRouter.patch("/:id/status", async (req, res, next) => {
       return res.status(400).json({ message: "Alasan penolakan wajib diisi." })
     }
 
+    let buktiTerimaFotoUrl: string | null = null
+
+    if (status === "DITERIMA") {
+      const file = req.file
+      if (!file) {
+        return res.status(400).json({ message: "Foto Bukti Terima wajib diunggah." })
+      }
+      if (!file.mimetype.startsWith("image/")) {
+        return res.status(400).json({ message: "File harus berupa gambar." })
+      }
+
+      const uploadResult = await uploadImageToCloudinary({
+        file: fileBufferToDataUrl(file),
+        folder: `mbg/distributions/${req.params.id}/school/${schoolId}`,
+      })
+      buktiTerimaFotoUrl = uploadResult.secure_url
+    }
+
     const updated = await prisma.$transaction(async (tx) => {
       await tx.batchDistributionSchool.updateMany({
         where: {
@@ -747,6 +853,7 @@ schoolDistributionsRouter.patch("/:id/status", async (req, res, next) => {
           status,
           receivedAt: new Date(),
           rejectedReason: status === "DITOLAK" ? normalizedReason : null,
+          buktiTerimaFotoUrl,
         },
       })
 

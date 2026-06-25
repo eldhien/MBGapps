@@ -949,7 +949,6 @@ export function KitchenChecklistPage({
       <Dialog
         open={Boolean(viewTarget)}
         onOpenChange={(open) => {
-          if (!open && zoomPhoto) return
           if (!open) setViewTarget(null)
         }}
       >
@@ -997,17 +996,18 @@ export function KitchenChecklistPage({
               </div>
             </div>
           ) : null}
+
         </DialogContent>
       </Dialog>
 
       {zoomPhoto ? createPortal(
         <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm pointer-events-auto"
           onPointerDown={(event) => event.stopPropagation()}
           onClick={() => setZoomPhoto(null)}
         >
           <div
-            className="relative max-h-[90svh] w-full max-w-5xl rounded-xl bg-popover p-3 shadow-lg"
+            className="relative flex max-h-[95svh] h-[95svh] w-[95vw] flex-col overflow-hidden rounded-xl bg-popover p-3 shadow-lg"
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           >
@@ -1015,8 +1015,7 @@ export function KitchenChecklistPage({
               type="button"
               variant="ghost"
               size="icon-sm"
-              className="absolute right-2 top-2 bg-background/80"
-              onPointerDown={(event) => event.stopPropagation()}
+              className="absolute right-2 top-2 z-10 bg-background/80"
               onClick={() => setZoomPhoto(null)}
             >
               ×
@@ -1025,7 +1024,7 @@ export function KitchenChecklistPage({
             <img
               src={zoomPhoto.url}
               alt={zoomPhoto.label}
-              className="max-h-[82svh] w-full rounded-lg object-contain"
+              className="h-full w-full rounded-lg object-contain"
             />
           </div>
         </div>,

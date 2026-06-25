@@ -7,7 +7,7 @@ import {
   Trash2Icon,
   TriangleAlertIcon,
 } from "lucide-react"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 
 import { AlertToast } from "@/components/ui/alert-toast"
 import {
@@ -41,11 +41,12 @@ import {
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
+  subscribePageCache,
 } from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 
 type SchoolRow = {
-  jumlahPorsi: number
+  jumlahPorsi: string
   schoolId: string
 }
 
@@ -55,8 +56,15 @@ function getCurrentDateTimeLocal() {
   return value.toISOString().slice(0, 16)
 }
 
+function getDistributionStatus(distribution: ProductionDistribution) {
+  return distribution.schools.some((item) => item.status === "DITOLAK")
+    ? "DITOLAK"
+    : distribution.status
+}
+
 export function DistributionPage({ mode = "create" }: { mode?: "create" | "history" }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams] = useSearchParams()
   const selectedBatchIdFromQuery = searchParams.get("batchId") ?? ""
   const cachedBatches = getCachedPageData<any[]>(pageCacheKeys.productionBatches)
@@ -82,7 +90,11 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
     !cachedBatches || !cachedDistributions || !cachedSchools || !cachedDrivers
   )
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [success, setSuccess] = useState<string | null>(null)
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
+  const [isDeletingDistribution, setIsDeletingDistribution] = useState(false)
+  const [success, setSuccess] = useState<string | null>(
+    () => (location.state as { success?: string } | null)?.success ?? null
+  )
   const [viewTarget, setViewTarget] = useState<ProductionDistribution | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ProductionDistribution | null>(null)
   const [editTarget, setEditTarget] = useState<ProductionDistribution | null>(null)
@@ -92,7 +104,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
   const [editSchoolRows, setEditSchoolRows] = useState<SchoolRow[]>([])
   const [waktuKirim, setWaktuKirim] = useState(getCurrentDateTimeLocal())
   const [schoolRows, setSchoolRows] = useState<SchoolRow[]>([
-    { jumlahPorsi: 0, schoolId: "" },
+    { jumlahPorsi: "", schoolId: "" },
   ])
 
   const selectedSchoolIds = useMemo(
@@ -103,18 +115,20 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
     () => new Set(editSchoolRows.map((row) => row.schoolId).filter(Boolean)),
     [editSchoolRows]
   )
+  const productionBatches = useMemo(
+    () => batches.filter((batch) => batch.status === "DIPRODUKSI"),
+    [batches]
+  )
+  const editableBatches = useMemo(
+    () =>
+      batches.filter(
+        (batch) => batch.status === "DIPRODUKSI" || batch.id === editBatchId
+      ),
+    [batches, editBatchId]
+  )
 
-  async function loadData() {
-    if (cachedBatches && cachedDistributions && cachedSchools && cachedDrivers) {
-      setBatches(cachedBatches)
-      setDrivers(cachedDrivers)
-      setSchools(cachedSchools)
-      setDistributions(cachedDistributions)
-      setIsLoading(false)
-      return
-    }
-
-    setIsLoading(true)
+  async function fetchLatestData(showLoading: boolean) {
+    if (showLoading) setIsLoading(true)
     setError(null)
 
     try {
@@ -140,12 +154,83 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
         error instanceof Error ? error.message : "Gagal memuat distribusi."
       )
     } finally {
-      setIsLoading(false)
+      if (showLoading) setIsLoading(false)
     }
+  }
+
+  async function loadData(force = false) {
+    if (!force) {
+      const batchesCache = getCachedPageData<any[]>(pageCacheKeys.productionBatches)
+      const distributionsCache = getCachedPageData<ProductionDistribution[]>(
+        pageCacheKeys.productionDistributions
+      )
+      const schoolsCache = getCachedPageData<SchoolAccount[]>(pageCacheKeys.schoolAccounts)
+      const driversCache = getCachedPageData<Driver[]>(pageCacheKeys.drivers)
+
+      if (batchesCache && distributionsCache && schoolsCache && driversCache) {
+        setBatches(batchesCache)
+        setDrivers(driversCache)
+        setSchools(schoolsCache)
+        setDistributions(distributionsCache)
+        setIsLoading(false)
+        void fetchLatestData(false)
+        return
+      }
+    }
+
+    await fetchLatestData(true)
   }
 
   useEffect(() => {
     void loadData()
+  }, [])
+
+  useEffect(() => {
+    const routeSuccess = (location.state as { success?: string } | null)
+      ?.success
+    if (routeSuccess) {
+      setSuccess(routeSuccess)
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location.pathname, location.state, navigate])
+
+  useEffect(() => {
+    const unsubscribeDistributions = subscribePageCache<ProductionDistribution[]>(
+      pageCacheKeys.productionDistributions,
+      (cachedData) => {
+        if (cachedData) {
+          setDistributions(cachedData)
+          setIsLoading(false)
+        }
+      }
+    )
+    const unsubscribeBatches = subscribePageCache<any[]>(
+      pageCacheKeys.productionBatches,
+      (cachedData) => {
+        if (cachedData) setBatches(cachedData)
+      }
+    )
+
+    return () => {
+      unsubscribeDistributions()
+      unsubscribeBatches()
+    }
+  }, [])
+
+  useEffect(() => {
+    const refresh = () => {
+      void fetchLatestData(false)
+    }
+
+    window.addEventListener("focus", refresh)
+    window.addEventListener("pageshow", refresh)
+    const intervalId = window.setInterval(refresh, 15_000)
+
+    return () => {
+      window.removeEventListener("focus", refresh)
+      window.removeEventListener("pageshow", refresh)
+      window.clearInterval(intervalId)
+    }
   }, [])
 
   useEffect(() => {
@@ -182,15 +267,17 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
     setEditSchoolRows(
       distribution.schools.length
         ? distribution.schools.map((item) => ({
-            jumlahPorsi: Number(item.jumlahPorsi ?? 0),
+            jumlahPorsi: String(item.jumlahPorsi ?? ""),
             schoolId: item.school.id,
           }))
-        : [{ jumlahPorsi: 0, schoolId: "" }]
+        : [{ jumlahPorsi: "", schoolId: "" }]
     )
   }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (isSubmitting) return
+
     setError(null)
     setSuccess(null)
     setIsSubmitting(true)
@@ -238,11 +325,16 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
       })
 
       setBatchId("")
-      navigate("/distribution", { replace: true })
       setDriverId("")
-      setSchoolRows([{ jumlahPorsi: 0, schoolId: "" }])
+      setSchoolRows([{ jumlahPorsi: "", schoolId: "" }])
       setWaktuKirim(getCurrentDateTimeLocal())
-      setSuccess("Distribusi berhasil dibuat dan tampil di akun sekolah terkait.")
+      navigate("/distribution/history", {
+        replace: true,
+        state: {
+          success:
+            "Distribusi berhasil dibuat dan tampil di akun sekolah terkait.",
+        },
+      })
     } catch (error) {
       setError(
         error instanceof Error ? error.message : "Gagal membuat distribusi."
@@ -254,7 +346,11 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
 
   async function saveDistributionEdit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!editTarget) return
+    if (!editTarget || isSavingEdit) return
+
+    setError(null)
+    setSuccess(null)
+    setIsSavingEdit(true)
 
     try {
       const payloadSchools = editSchoolRows
@@ -303,12 +399,17 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
       setSuccess("Distribusi berhasil diperbarui.")
     } catch (error) {
       setError(error instanceof Error ? error.message : "Gagal mengedit distribusi.")
+    } finally {
+      setIsSavingEdit(false)
     }
   }
 
   async function deleteDistribution() {
-    if (!deleteTarget) return
+    if (!deleteTarget || isDeletingDistribution) return
 
+    setIsDeletingDistribution(true)
+    setError(null)
+    setSuccess(null)
     try {
       await api.productionDistributions.delete(deleteTarget.id)
       setDistributions((current) =>
@@ -329,6 +430,8 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
       setSuccess("Distribusi berhasil dihapus.")
     } catch (error) {
       setError(error instanceof Error ? error.message : "Gagal menghapus distribusi.")
+    } finally {
+      setIsDeletingDistribution(false)
     }
   }
 
@@ -380,7 +483,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                 required
               >
                 <option value="">Pilih batch...</option>
-                {batches.map((batch) => (
+                {productionBatches.map((batch) => (
                   <option key={batch.id} value={batch.id}>
                     {batch.id} - {batch.menu?.name ?? "Menu"}
                   </option>
@@ -425,7 +528,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                 onClick={() =>
                   setSchoolRows((current) => [
                     ...current,
-                    { jumlahPorsi: 0, schoolId: "" },
+                    { jumlahPorsi: "", schoolId: "" },
                   ])
                 }
               >
@@ -468,11 +571,12 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                   Jumlah porsi
                   <Input
                     type="number"
-                    min={1}
+                    inputMode="numeric"
+                    step="1"
                     value={row.jumlahPorsi}
                     onChange={(event) =>
                       updateSchoolRow(index, {
-                        jumlahPorsi: Number(event.target.value),
+                        jumlahPorsi: event.target.value,
                       })
                     }
                     required
@@ -498,7 +602,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
           </div>
 
           <div className="flex justify-end">
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" pending={isSubmitting} disabled={isSubmitting}>
               <SendIcon />
               {isSubmitting ? "Menyimpan..." : "Submit Distribusi"}
             </Button>
@@ -567,7 +671,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                       ? new Date(distribution.waktuKirim).toLocaleString("id-ID")
                       : "-"}
                   </td>
-                  <td className="px-4 py-3">{distribution.status}</td>
+                  <td className="px-4 py-3">{getDistributionStatus(distribution)}</td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
                       <Button
@@ -672,7 +776,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                   required
                 >
                   <option value="">Pilih batch...</option>
-                  {batches.map((batch) => (
+                  {editableBatches.map((batch) => (
                     <option key={batch.id} value={batch.id}>
                       {batch.id} - {batch.menu?.name ?? "Menu"}
                     </option>
@@ -717,7 +821,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                   onClick={() =>
                     setEditSchoolRows((current) => [
                       ...current,
-                      { jumlahPorsi: 0, schoolId: "" },
+                      { jumlahPorsi: "", schoolId: "" },
                     ])
                   }
                 >
@@ -759,12 +863,13 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                   <label className="grid gap-2 text-sm font-medium">
                     Jumlah porsi
                     <Input
-                      min={1}
                       type="number"
+                      inputMode="numeric"
+                      step="1"
                       value={row.jumlahPorsi}
                       onChange={(event) =>
                         updateEditSchoolRow(index, {
-                          jumlahPorsi: Number(event.target.value),
+                          jumlahPorsi: event.target.value,
                         })
                       }
                       required
@@ -794,13 +899,15 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
               <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>
                 Batal
               </Button>
-              <Button type="submit">Simpan</Button>
+              <Button type="submit" pending={isSavingEdit} disabled={isSavingEdit}>
+                {isSavingEdit ? "Menyimpan..." : "Simpan"}
+              </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && !isDeletingDistribution && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia>
@@ -812,15 +919,16 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletingDistribution}>Batal</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
+              disabled={isDeletingDistribution}
               onClick={(event) => {
                 event.preventDefault()
                 void deleteDistribution()
               }}
             >
-              Hapus
+              {isDeletingDistribution ? "Menghapus..." : "Hapus"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

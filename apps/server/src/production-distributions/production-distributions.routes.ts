@@ -8,6 +8,15 @@ import { Router } from "express"
 
 import { getCurrentUser } from "../auth/session.js"
 import { prisma } from "../lib/prisma.js"
+import multer from "multer"
+import { fileBufferToDataUrl, uploadImageToCloudinary } from "../lib/cloudinary.js"
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 8 * 1024 * 1024,
+  },
+})
 
 export const productionDistributionsRouter = Router()
 
@@ -26,6 +35,29 @@ function isUuid(value?: string | null) {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     )
   )
+}
+
+let batchStatusEnumReady: Promise<void> | null = null
+
+async function ensureBatchStatusFinalValues() {
+  if (!batchStatusEnumReady) {
+    batchStatusEnumReady = (async () => {
+      await prisma.$executeRawUnsafe(
+        `ALTER TYPE "public"."BatchStatus" ADD VALUE IF NOT EXISTS 'DITERIMA'`
+      )
+      await prisma.$executeRawUnsafe(
+        `ALTER TYPE "public"."BatchStatus" ADD VALUE IF NOT EXISTS 'DITOLAK'`
+      )
+      await prisma.$executeRawUnsafe(
+        `ALTER TYPE "public"."BatchDistributionStatus" ADD VALUE IF NOT EXISTS 'DITOLAK'`
+      )
+    })().catch((error) => {
+      batchStatusEnumReady = null
+      throw error
+    })
+  }
+
+  return batchStatusEnumReady
 }
 
 async function resolveSppgOwnerId(user: {
@@ -83,11 +115,23 @@ async function requireSppgOrSuperAdmin(
 }
 
 function toDistributionResponse(distribution: any) {
+  const schools = distribution.schools.map((item: any) => ({
+    id: item.id,
+    jumlahPorsi: item.jumlahPorsi,
+    status: item.status,
+    receivedAt: item.receivedAt?.toISOString() ?? null,
+    rejectedReason: item.rejectedReason,
+    school: item.school,
+  }))
+  const normalizedStatus = schools.some((item: any) => item.status === "DITOLAK")
+    ? "DITOLAK"
+    : distribution.status
+
   return {
     id: distribution.id,
     batchId: distribution.batchId,
     waktuKirim: distribution.waktuKirim?.toISOString() ?? null,
-    status: distribution.status,
+    status: normalizedStatus,
     createdAt: distribution.createdAt.toISOString(),
     batch: distribution.batch
       ? {
@@ -98,14 +142,7 @@ function toDistributionResponse(distribution: any) {
           driver: distribution.batch.driver,
         }
       : null,
-    schools: distribution.schools.map((item: any) => ({
-      id: item.id,
-      jumlahPorsi: item.jumlahPorsi,
-      status: item.status,
-      receivedAt: item.receivedAt?.toISOString() ?? null,
-      rejectedReason: item.rejectedReason,
-      school: item.school,
-    })),
+    schools,
   }
 }
 
@@ -187,7 +224,12 @@ function toRawDistributionResponses(rows: RawProductionDistribution[]) {
     }
   }
 
-  return [...map.values()]
+  return [...map.values()].map((distribution) => ({
+    ...distribution,
+    status: distribution.schools.some((item: any) => item.status === "DITOLAK")
+      ? "DITOLAK"
+      : distribution.status,
+  }))
 }
 
 async function findProductionDistributionsForUser(user: {
@@ -246,6 +288,19 @@ productionDistributionsRouter.get("/", async (req, res, next) => {
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
     }
+
+    await ensureBatchStatusFinalValues()
+    await prisma.$executeRawUnsafe(`
+      UPDATE "public"."batch_distributions" d
+      SET status = 'DITOLAK'::"public"."BatchDistributionStatus"
+      WHERE d.status = 'BERMASALAH'::"public"."BatchDistributionStatus"
+        AND EXISTS (
+          SELECT 1
+          FROM "public"."batch_distribution_schools" ds
+          WHERE ds.distribution_id = d.id
+            AND ds.status = 'DITOLAK'::"public"."BatchDistributionSchoolStatus"
+        )
+    `)
 
     const distributions = await findProductionDistributionsForUser(auth.currentUser)
 
@@ -645,15 +700,18 @@ function toSchoolDistributionResponse(item: any) {
     status: item.status,
     receivedAt: item.receivedAt?.toISOString() ?? null,
     rejectedReason: item.rejectedReason,
+    buktiTerimaFotoUrl: item.buktiTerimaFotoUrl ?? null,
     distribution: {
       id: item.distribution.id,
       waktuKirim: item.distribution.waktuKirim?.toISOString() ?? null,
       status: item.distribution.status,
+      fotoDikemasUrl: item.distribution.fotoDikemasUrl ?? null,
     },
     batch: {
       id: item.distribution.batch.id,
       totalPorsi: item.distribution.batch.totalPorsi,
       status: item.distribution.batch.status,
+      createdAt: item.distribution.batch.createdAt?.toISOString() ?? null,
       menu: item.distribution.batch.menu,
       driver: item.distribution.batch.driver,
       foto: item.distribution.batch.foto,
@@ -677,6 +735,15 @@ schoolDistributionsRouter.get("/", async (req, res, next) => {
       })
     }
 
+    await ensureBatchStatusFinalValues()
+
+    // Get the SPPG that manages this school
+    const schoolRecord = await prisma.school.findUnique({
+      where: { id: schoolId },
+      select: { sppgId: true },
+    })
+
+    // 1. Fetch existing BatchDistributionSchool records (batches already in distribution)
     const distributions = await prisma.batchDistributionSchool.findMany({
       where: { schoolId },
       include: {
@@ -695,16 +762,86 @@ schoolDistributionsRouter.get("/", async (req, res, next) => {
       orderBy: { createdAt: "desc" },
     })
 
+    // Collect batchIds that already have a distribution school record (avoid duplicates)
+    const distributedBatchIds = new Set(
+      distributions.map((d) => d.distribution.batchId)
+    )
+
+    // 2. Fetch ALL batches created today by the SPPG managing this school
+    //    that DON'T yet have a distribution record for this school
+    //    Filter: petugasId = sppgId (SPPG created it directly) OR petugasId IS NULL (system batch)
+    const undistributedBatches = schoolRecord?.sppgId
+      ? await prisma.batchProduksi.findMany({
+          where: {
+            id: { notIn: [...distributedBatchIds] },
+            OR: [
+              { petugasId: schoolRecord.sppgId }, // SPPG created directly
+              { petugasId: null },                 // No assigned petugas (SPPG system)
+            ],
+            createdAt: {
+              gte: (() => {
+                const d = new Date()
+                d.setHours(0, 0, 0, 0)
+                return d
+              })(),
+              lte: (() => {
+                const d = new Date()
+                d.setHours(23, 59, 59, 999)
+                return d
+              })(),
+            },
+          },
+          include: {
+            driver: true,
+            foto: true,
+            menu: true,
+          },
+          orderBy: { createdAt: "desc" },
+        })
+      : []
+
+
+    // Convert undistributed batch entries to the same response shape
+    const virtualDistributions = undistributedBatches.map((batch) => ({
+      id: `virtual-${batch.id}`,
+      jumlahPorsi: batch.totalPorsi,
+      status: "MENUNGGU",
+      receivedAt: null,
+      rejectedReason: null,
+      buktiTerimaFotoUrl: null,
+      distribution: {
+        id: `virtual-dist-${batch.id}`,
+        waktuKirim: null,
+        status: "DRAFT",
+        fotoDikemasUrl: null,
+      },
+      batch: {
+        id: batch.id,
+        totalPorsi: batch.totalPorsi,
+        status: batch.status,
+        createdAt: batch.createdAt?.toISOString() ?? null,
+        menu: batch.menu,
+        driver: batch.driver,
+        foto: batch.foto,
+      },
+    }))
+
     return res.json({
-      distributions: distributions.map(toSchoolDistributionResponse),
+      distributions: [
+        ...distributions.map(toSchoolDistributionResponse),
+        ...virtualDistributions,
+      ],
     })
   } catch (error) {
     next(error)
   }
 })
 
-schoolDistributionsRouter.patch("/:id/status", async (req, res, next) => {
+
+
+schoolDistributionsRouter.patch("/:id/status", upload.single("file"), async (req, res, next) => {
   try {
+    const distributionSchoolId = String(req.params.id)
     const currentUser = await getCurrentUser(req)
 
     if (!currentUser) {
@@ -737,22 +874,43 @@ schoolDistributionsRouter.patch("/:id/status", async (req, res, next) => {
       return res.status(400).json({ message: "Alasan penolakan wajib diisi." })
     }
 
+    await ensureBatchStatusFinalValues()
+
+    let buktiTerimaFotoUrl: string | null = null
+    const file = req.file
+
+    if (!file) {
+      return res.status(400).json({ message: "Foto validasi wajib diunggah." })
+    }
+    if (!file.mimetype.startsWith("image/")) {
+      return res.status(400).json({ message: "File harus berupa gambar." })
+    }
+
+    const uploadResult = await uploadImageToCloudinary({
+      file: fileBufferToDataUrl(file),
+      folder: `mbg/distributions/${distributionSchoolId}/school/${schoolId}`,
+    })
+    buktiTerimaFotoUrl = uploadResult.url
+
     const updated = await prisma.$transaction(async (tx) => {
-      await tx.batchDistributionSchool.updateMany({
+      const txAny = tx as any
+
+      await txAny.batchDistributionSchool.updateMany({
         where: {
-          id: req.params.id,
+          id: distributionSchoolId,
           schoolId,
         },
         data: {
           status,
           receivedAt: new Date(),
           rejectedReason: status === "DITOLAK" ? normalizedReason : null,
+          buktiTerimaFotoUrl,
         },
       })
 
-      const item = await tx.batchDistributionSchool.findFirstOrThrow({
+      const item = await txAny.batchDistributionSchool.findFirstOrThrow({
         where: {
-          id: req.params.id,
+          id: distributionSchoolId,
           schoolId,
         },
         include: {
@@ -771,28 +929,34 @@ schoolDistributionsRouter.patch("/:id/status", async (req, res, next) => {
         },
       })
 
-      const statuses = item.distribution.schools.map((school) =>
+      const statuses = item.distribution.schools.map((school: any) =>
         school.id === item.id ? status : school.status
       )
       const nextDistributionStatus = statuses.includes("DITOLAK")
-        ? "BERMASALAH"
-        : statuses.every((value) => value === "DITERIMA")
+        ? "DITOLAK"
+        : statuses.every((value: string) => value === "DITERIMA")
           ? "SELESAI"
           : item.distribution.status
 
       if (nextDistributionStatus !== item.distribution.status) {
-        await tx.batchDistribution.update({
+        await txAny.batchDistribution.update({
           where: { id: item.distribution.id },
           data: { status: nextDistributionStatus },
         })
       }
+
+      await tx.$executeRawUnsafe(
+        `UPDATE "batch_produksi" SET "status" = $1::"BatchStatus", "updated_at" = NOW() WHERE "id" = $2`,
+        status === "DITERIMA" ? "DITERIMA" : "DITOLAK",
+        item.distribution.batchId
+      )
 
       await tx.schoolProgress.updateMany({
         where: { schoolId },
         data: { status: status === "DITERIMA" ? "DITERIMA" : "BERMASALAH" },
       })
 
-      return tx.batchDistributionSchool.findUniqueOrThrow({
+      return txAny.batchDistributionSchool.findUniqueOrThrow({
         where: { id: item.id },
         include: {
           distribution: {

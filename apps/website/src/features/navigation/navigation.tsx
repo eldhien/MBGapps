@@ -8,7 +8,6 @@ import {
   HistoryIcon,
   LayoutDashboardIcon,
   PackagePlusIcon,
-  QrCodeIcon,
   SchoolIcon,
   Settings2Icon,
   ShieldCheckIcon,
@@ -26,7 +25,6 @@ export type AppPageKey =
   | "distribution"
   | "masterData"
   | "reports"
-  | "scanQr"
   | "receivingValidation"
   | "foodReports"
   | "studentComplaints"
@@ -78,7 +76,6 @@ export const navigationPages: NavigationPage[] = [
     features: [
       "Pembuatan batch makanan: nama menu, jumlah porsi, komposisi makanan, waktu produksi, petugas driver, foto.",
       "Sistem Batch ID unik untuk setiap produksi makanan.",
-      "Generate QR Code untuk setiap batch makanan.",
     ],
     children: [
       {
@@ -193,17 +190,6 @@ export const navigationPages: NavigationPage[] = [
         path: "/reports/complaint-patterns-ai",
         icon: <BrainCircuitIcon />,
       },
-    ],
-  },
-  {
-    key: "scanQr",
-    title: "Scan QR",
-    path: "/scan-qr",
-    allowedRoles: schoolRoles,
-    icon: <QrCodeIcon />,
-    features: [
-      "Scan QR Code melalui website sekolah.",
-      "Tampilan detail batch setelah scan: ID Batch, porsi makanan, petugas driver.",
     ],
   },
   {

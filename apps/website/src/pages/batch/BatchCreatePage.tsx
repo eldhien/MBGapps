@@ -9,7 +9,6 @@ import {
 } from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 import { PlusIcon, Trash2Icon } from "lucide-react"
-import { QRCodeSVG } from "qrcode.react"
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
@@ -24,7 +23,6 @@ export function BatchCreatePage() {
 
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [createdBatch, setCreatedBatch] = useState<any>(null)
   const [fotoMakanan, setFotoMakanan] = useState<File | null>(null)
   const [komposisi, setKomposisi] = useState<KomposisiItem[]>([
     createEmptyKomposisi(),
@@ -44,20 +42,13 @@ export function BatchCreatePage() {
     [komposisi]
   )
 
-  const resetForm = () => {
-    setCreatedBatch(null)
-    setFotoMakanan(null)
-    setKomposisi([createEmptyKomposisi()])
-    setForm({
-      jumlahPorsi: "",
-      namaMenu: "",
-      waktuMulai: "",
-      waktuSelesai: "",
-    })
-  }
-
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
+
+    if (isLoading) {
+      return
+    }
+
     setError(null)
 
     if (cleanedKomposisi.length === 0) {
@@ -94,94 +85,34 @@ export function BatchCreatePage() {
         ],
       })
 
-      await api.productionBatches.uploadPhoto(
+      const uploadedPhoto = await api.productionBatches.uploadPhoto(
         result.id,
         fotoMakanan,
         "MAKANAN_JADI"
       )
+      const createdBatch = {
+        ...result,
+        foto: [...(result.foto ?? []), uploadedPhoto],
+      }
 
       const cachedBatches = getCachedPageData<any[]>(
         pageCacheKeys.productionBatches
       )
       if (cachedBatches) {
         setCachedPageData(pageCacheKeys.productionBatches, [
-          result,
+          createdBatch,
           ...cachedBatches,
         ])
       }
 
-      setCreatedBatch(result)
+      navigate("/batch", {
+        state: { success: "Batch berhasil disimpan." },
+      })
     } catch (err: any) {
       setError(err.message || "Gagal membuat batch")
     } finally {
       setIsLoading(false)
     }
-  }
-
-  if (createdBatch) {
-    const qrUrl = `${window.location.origin}/batch-info/${createdBatch.id}`
-
-    return (
-      <DashboardShell title="Batch Berhasil Dibuat">
-        <div className="mx-auto max-w-3xl overflow-hidden rounded-xl border bg-card shadow-sm">
-          <div className="border-b bg-primary/5 p-6 text-center">
-            <h2 className="mb-2 text-2xl font-bold">{createdBatch.id}</h2>
-            <p className="text-muted-foreground">
-              Batch berhasil disimpan dan QR Code sudah dibuat.
-            </p>
-          </div>
-
-          <div className="grid gap-6 p-6 md:grid-cols-2">
-            <div>
-              <h3 className="font-semibold text-muted-foreground">
-                Informasi Batch
-              </h3>
-              <dl className="mt-3 space-y-2 text-sm">
-                <div className="flex justify-between gap-4">
-                  <dt>Nama Menu</dt>
-                  <dd className="font-medium">
-                    {createdBatch.menu?.name || form.namaMenu}
-                  </dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt>Jumlah Porsi</dt>
-                  <dd className="font-medium">{createdBatch.totalPorsi}</dd>
-                </div>
-                <div className="flex justify-between gap-4">
-                  <dt>Waktu Produksi</dt>
-                  <dd className="font-medium text-right">
-                    {form.waktuMulai || "-"} sampai {form.waktuSelesai || "-"}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-
-            <div className="flex flex-col items-center justify-center border-l pl-6">
-              <p className="mb-3 text-sm font-medium">QR Code Batch</p>
-              <div className="rounded-xl border bg-white p-3 shadow-sm">
-                <QRCodeSVG value={qrUrl} size={150} />
-              </div>
-              <Button
-                type="button"
-                variant="link"
-                size="sm"
-                className="mt-2"
-                onClick={() => window.open(qrUrl, "_blank")}
-              >
-                Buka Halaman Scan
-              </Button>
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-4 border-t p-6">
-            <Button variant="outline" onClick={() => navigate("/batch")}>
-              Kembali ke Daftar
-            </Button>
-            <Button onClick={resetForm}>Buat Batch Baru</Button>
-          </div>
-        </div>
-      </DashboardShell>
-    )
   }
 
   return (
@@ -232,8 +163,9 @@ export function BatchCreatePage() {
             </label>
             <Input
               required
-              min={1}
               type="number"
+              inputMode="numeric"
+              step="1"
               placeholder="Contoh: 500"
               value={form.jumlahPorsi}
               onChange={(event) =>
@@ -335,8 +267,8 @@ export function BatchCreatePage() {
           <Button type="button" variant="outline" onClick={() => navigate("/batch")}>
             Batal
           </Button>
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? "Menyimpan..." : "Simpan Batch & Generate QR"}
+          <Button type="submit" pending={isLoading} disabled={isLoading}>
+            {isLoading ? "Menyimpan..." : "Simpan Batch"}
           </Button>
         </div>
       </form>

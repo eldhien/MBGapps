@@ -85,12 +85,17 @@ export function StudentComplaintsPage({
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [form, setForm] = useState(initialForm)
+  const selectableBatches = batches.filter(
+    (batch) => ["DITERIMA", "DITOLAK", "SELESAI"].includes(batch.status)
+  )
 
   useEffect(() => {
     void loadData()
   }, [])
 
   const loadData = async (force = false) => {
+    let usedCache = false
+
     if (!force) {
       const complaintsCache = getCachedPageData<StudentComplaint[]>(
         pageCacheKeys.studentComplaints
@@ -103,11 +108,11 @@ export function StudentComplaintsPage({
         setComplaints(complaintsCache)
         setBatches(batchesCache ?? [])
         setLoading(false)
-        return
+        usedCache = true
       }
     }
 
-    setLoading(true)
+    if (!usedCache) setLoading(true)
     setError(null)
 
     try {
@@ -123,7 +128,7 @@ export function StudentComplaintsPage({
             complaintsResponse.value.data
           )
         )
-      } else {
+      } else if (!usedCache) {
         throw complaintsResponse.reason
       }
 
@@ -328,7 +333,7 @@ export function StudentComplaintsPage({
                   }
                 >
                   <option value="">Pilih nanti / tidak diketahui</option>
-                  {batches.map((batch) => (
+                  {selectableBatches.map((batch) => (
                     <option key={batch.id} value={batch.id}>
                       {batch.batchIdUnik} · {batch.namaMenu}
                     </option>

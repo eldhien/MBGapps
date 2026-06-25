@@ -21,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { api } from "@/lib/api"
+import { cn } from "@/lib/utils"
 import {
   getCachedPageData,
   pageCacheKeys,
@@ -28,13 +29,31 @@ import {
   subscribePageCache,
 } from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
-import { EyeIcon, PencilIcon, PlusIcon, Trash2Icon, TruckIcon, TriangleAlertIcon } from "lucide-react"
-import { QRCodeSVG } from "qrcode.react"
+import {
+  CheckCircle2Icon,
+  EyeIcon,
+  ImageIcon,
+  PencilIcon,
+  PlusIcon,
+  Trash2Icon,
+  TruckIcon,
+  TriangleAlertIcon,
+  XIcon,
+  ZoomInIcon,
+} from "lucide-react"
 import { useEffect, useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { createPortal } from "react-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 
 type KomposisiItem = {
   namaBahan: string
+}
+
+type EditFormState = {
+  namaMenu: string
+  totalPorsi: string
+  waktuMulai: string
+  waktuSelesai: string
 }
 
 const createEmptyKomposisi = (): KomposisiItem => ({ namaBahan: "" })
@@ -60,16 +79,123 @@ function getLatestFoodPhotoUrl(batch: any) {
   return getBatchFoodPhotos(batch)[0]?.url ?? null
 }
 
+function PhotoThumb({
+  label,
+  onZoom,
+  url,
+}: {
+  label: string
+  onZoom: (url: string) => void
+  url: string | null | undefined
+}) {
+  if (!url) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <div className="flex h-20 w-full items-center justify-center rounded-lg border border-dashed bg-muted/30 text-muted-foreground/50">
+          <ImageIcon className="h-5 w-5" />
+        </div>
+        <p className="truncate text-center text-xs text-muted-foreground">
+          {label}
+        </p>
+        <p className="text-center text-xs italic text-muted-foreground/60">
+          Belum ada
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => onZoom(url)}
+        className="group relative h-20 w-full overflow-hidden rounded-lg border bg-muted/20"
+      >
+        <img
+          src={url}
+          alt={label}
+          className="h-full w-full object-cover transition group-hover:scale-105 group-hover:opacity-90"
+        />
+        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/20">
+          <ZoomInIcon className="h-5 w-5 text-white opacity-0 transition group-hover:opacity-100" />
+        </div>
+      </button>
+      <p className="truncate text-center text-xs text-muted-foreground">
+        {label}
+      </p>
+    </div>
+  )
+}
+
+function PhotoLightbox({
+  onClose,
+  url,
+}: {
+  onClose: () => void
+  url: string
+}) {
+  function closePreview(event: React.SyntheticEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    onClose()
+  }
+
+  function keepPreviewOpen(event: React.SyntheticEvent) {
+    event.stopPropagation()
+  }
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose()
+    }
+
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose])
+
+  return createPortal(
+    <div
+      className="pointer-events-auto fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4"
+      onClick={closePreview}
+      onPointerDown={closePreview}
+    >
+      <button
+        type="button"
+        onClick={closePreview}
+        onPointerDown={closePreview}
+        className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
+        aria-label="Tutup"
+      >
+        <XIcon className="h-5 w-5" />
+      </button>
+      <img
+        src={url}
+        alt="Preview foto"
+        className="max-h-[92vh] max-w-[95vw] rounded-xl object-contain shadow-2xl"
+        onClick={keepPreviewOpen}
+        onPointerDown={keepPreviewOpen}
+      />
+    </div>,
+    document.body
+  )
+}
+
 export function BatchListPage({
   mode = "production",
 }: {
   mode?: "production" | "distribution"
 }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const cachedBatches = getCachedPageData<any[]>(pageCacheKeys.productionBatches)
   const [batches, setBatches] = useState<any[]>(() => cachedBatches ?? [])
   const [isLoading, setIsLoading] = useState(!cachedBatches)
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(
+    () => (location.state as { success?: string } | null)?.success ?? null
+  )
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
+  const [isDeletingBatch, setIsDeletingBatch] = useState(false)
   const [viewTarget, setViewTarget] = useState<any>(null)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [editTarget, setEditTarget] = useState<any>(null)
@@ -79,9 +205,9 @@ export function BatchListPage({
   const [editKomposisi, setEditKomposisi] = useState<KomposisiItem[]>([
     createEmptyKomposisi(),
   ])
-  const [editForm, setEditForm] = useState({
+  const [editForm, setEditForm] = useState<EditFormState>({
     namaMenu: "",
-    totalPorsi: 0,
+    totalPorsi: "",
     waktuMulai: "",
     waktuSelesai: "",
   })
@@ -109,6 +235,15 @@ export function BatchListPage({
   }, [])
 
   useEffect(() => {
+    const routeSuccess = (location.state as { success?: string } | null)
+      ?.success
+    if (routeSuccess) {
+      setSuccess(routeSuccess)
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location.pathname, location.state, navigate])
+
+  useEffect(() => {
     if (!editFotoMakanan) {
       setEditFotoPreview(null)
       return
@@ -121,7 +256,9 @@ export function BatchListPage({
   }, [editFotoMakanan])
 
   async function deleteBatch() {
-    if (!deleteTarget) return
+    if (!deleteTarget || isDeletingBatch) return
+    setIsDeletingBatch(true)
+    setError(null)
     try {
       await api.productionBatches.delete(deleteTarget.id)
       setBatches((current) =>
@@ -131,8 +268,11 @@ export function BatchListPage({
         )
       )
       setDeleteTarget(null)
+      setSuccess("Batch berhasil dihapus.")
     } catch (err: any) {
       setError(err.message || "Gagal menghapus batch")
+    } finally {
+      setIsDeletingBatch(false)
     }
   }
 
@@ -148,7 +288,7 @@ export function BatchListPage({
     )
     setEditForm({
       namaMenu: batch.menu?.name ?? "",
-      totalPorsi: Number(batch.totalPorsi ?? 0),
+      totalPorsi: String(batch.totalPorsi ?? ""),
       waktuMulai: toDateTimeLocal(batch.waktuMulai),
       waktuSelesai: toDateTimeLocal(batch.waktuSelesai),
     })
@@ -156,7 +296,10 @@ export function BatchListPage({
 
   async function saveBatchEdit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!editTarget) return
+    if (!editTarget || isSavingEdit) return
+
+    setError(null)
+    setIsSavingEdit(true)
 
     try {
       const cleanedKomposisi = editKomposisi
@@ -170,7 +313,7 @@ export function BatchListPage({
 
       let updated = await api.productionBatches.update(editTarget.id, {
         namaMenu: editForm.namaMenu.trim(),
-        totalPorsi: editForm.totalPorsi,
+        totalPorsi: Number(editForm.totalPorsi),
         waktuMulai: editForm.waktuMulai || undefined,
         waktuSelesai: editForm.waktuSelesai || undefined,
         varian: [
@@ -206,8 +349,11 @@ export function BatchListPage({
       setEditTarget(null)
       setEditFotoMakanan(null)
       setEditFotoPreview(null)
+      setSuccess("Batch berhasil diperbarui.")
     } catch (err: any) {
       setError(err.message || "Gagal mengedit batch")
+    } finally {
+      setIsSavingEdit(false)
     }
   }
 
@@ -254,6 +400,13 @@ export function BatchListPage({
           onClose={() => setError(null)}
         />
       )}
+      {success && (
+        <AlertToast
+          title="Berhasil"
+          description={success}
+          onClose={() => setSuccess(null)}
+        />
+      )}
 
       <section className="pb-1">
         <div className="space-y-2">
@@ -264,7 +417,7 @@ export function BatchListPage({
             Riwayat Batch Makanan
           </h1>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Pantau batch produksi, status distribusi, QR, dan detail menu yang sudah dibuat.
+            Pantau batch produksi, status distribusi, dan detail menu yang sudah dibuat.
           </p>
         </div>
       </section>
@@ -396,42 +549,17 @@ export function BatchListPage({
           </DialogHeader>
           {viewTarget ? (
             <div className="grid gap-5">
-              <div className="flex flex-col items-center gap-3 rounded-xl border bg-muted/20 p-4 text-center">
-                <div className="rounded-lg border bg-white p-3">
-                  <QRCodeSVG
-                    value={`${window.location.origin}/batch-info/${viewTarget.id}`}
-                    size={120}
-                  />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">ID Batch</p>
-                  <p className="break-all text-sm font-semibold">
-                    {viewTarget.id}
-                  </p>
-                </div>
+              <div className="rounded-xl border bg-muted/20 p-4">
+                <p className="text-xs text-muted-foreground">ID Batch</p>
+                <p className="break-all text-sm font-semibold">{viewTarget.id}</p>
               </div>
               <div className="grid gap-2">
                 <p className="text-sm font-medium">Foto makanan</p>
-                {getLatestFoodPhotoUrl(viewTarget) ? (
-                  <button
-                    type="button"
-                    className="group w-full overflow-hidden rounded-xl border bg-muted/20 text-left"
-                    onClick={() => setZoomFotoUrl(getLatestFoodPhotoUrl(viewTarget))}
-                  >
-                    <img
-                      src={getLatestFoodPhotoUrl(viewTarget)}
-                      alt={`Foto makanan batch ${viewTarget.id}`}
-                      className="h-24 w-full object-cover transition group-hover:opacity-90"
-                    />
-                    <span className="block border-t px-2 py-1 text-xs text-muted-foreground">
-                      Klik untuk zoom
-                    </span>
-                  </button>
-                ) : (
-                  <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    Belum ada foto makanan.
-                  </div>
-                )}
+                <PhotoThumb
+                  label="Makanan Jadi"
+                  url={getLatestFoodPhotoUrl(viewTarget)}
+                  onZoom={setZoomFotoUrl}
+                />
               </div>
               <dl className="grid gap-3 text-sm">
                 <div className="flex justify-between gap-4">
@@ -487,13 +615,14 @@ export function BatchListPage({
               <label className="grid gap-2 text-sm font-medium">
                 Jumlah porsi
                 <Input
-                  min={1}
                   type="number"
+                  inputMode="numeric"
+                  step="1"
                   value={editForm.totalPorsi}
                   onChange={(event) =>
                     setEditForm((current) => ({
                       ...current,
-                      totalPorsi: Number(event.target.value),
+                      totalPorsi: event.target.value,
                     }))
                   }
                   required
@@ -545,11 +674,14 @@ export function BatchListPage({
                             ? "Preview foto makanan baru"
                             : `Foto makanan batch ${editTarget?.id}`
                         }
-                        className="h-24 w-full object-cover transition group-hover:opacity-90"
+                        className="h-20 w-full object-cover transition group-hover:opacity-90"
                       />
-                      <p className="border-t px-2 py-1 text-xs text-muted-foreground">
+                      <p className={cn(
+                        "border-t px-2 py-1 text-xs",
+                        editFotoPreview ? "bg-primary text-primary-foreground font-medium" : "text-muted-foreground"
+                      )}>
                         {editFotoPreview
-                          ? "Preview foto baru. Klik zoom."
+                          ? "Foto siap diganti. Klik zoom."
                           : "Foto saat ini. Klik zoom."}
                       </p>
                     </button>
@@ -558,21 +690,50 @@ export function BatchListPage({
                       Belum ada foto makanan.
                     </div>
                   )}
-                  <div className="grid gap-2 rounded-xl border bg-muted/10 p-3">
-                    <p className="text-xs font-normal text-muted-foreground">
-                      Foto bisa diganti dengan memilih file baru.
-                    </p>
-                    <label className="inline-flex h-9 cursor-pointer items-center justify-center rounded-md border bg-background px-3 text-sm font-medium shadow-xs hover:bg-accent hover:text-accent-foreground">
-                      Ganti foto
-                      <Input
-                        type="file"
-                        accept="image/*"
-                        className="sr-only"
-                        onChange={(event) =>
-                          setEditFotoMakanan(event.target.files?.[0] || null)
-                        }
-                      />
-                    </label>
+                  <div className={cn(
+                    "grid gap-2 rounded-xl border p-3",
+                    editFotoMakanan ? "bg-primary/5 border-primary/20" : "bg-muted/10"
+                  )}>
+                    <div className={cn(
+                      "text-xs font-normal",
+                      editFotoMakanan ? "text-primary font-medium flex items-center gap-1.5" : "text-muted-foreground"
+                    )}>
+                      {editFotoMakanan ? (
+                        <>
+                          <CheckCircle2Icon className="h-4 w-4" />
+                          File baru dipilih
+                        </>
+                      ) : (
+                        "Foto bisa diganti dengan file baru."
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className={cn(
+                        "inline-flex h-9 cursor-pointer items-center justify-center rounded-md border bg-background px-3 text-sm font-medium shadow-xs hover:bg-accent hover:text-accent-foreground",
+                        editFotoMakanan && "border-primary/20 text-primary"
+                      )}>
+                        Ganti foto
+                        <Input
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={(event) =>
+                            setEditFotoMakanan(event.target.files?.[0] || null)
+                          }
+                        />
+                      </label>
+                      {editFotoMakanan && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          className="h-9 w-9 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => setEditFotoMakanan(null)}
+                        >
+                          <Trash2Icon className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
                     <p className="truncate text-xs font-normal text-muted-foreground">
                       {editFotoMakanan?.name ?? "Belum memilih file baru."}
                     </p>
@@ -641,26 +802,34 @@ export function BatchListPage({
               <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>
                 Batal
               </Button>
-              <Button type="submit">Simpan</Button>
+              <Button type="submit" pending={isSavingEdit} disabled={isSavingEdit}>
+                {isSavingEdit ? "Menyimpan..." : "Simpan"}
+              </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
       {zoomFotoUrl ? (
+        <PhotoLightbox url={zoomFotoUrl} onClose={() => setZoomFotoUrl(null)} />
+      ) : null}
+
+      {false && zoomFotoUrl ? createPortal(
         <div
-          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm pointer-events-auto"
+          onPointerDown={(event) => event.stopPropagation()}
           onClick={() => setZoomFotoUrl(null)}
         >
           <div
-            className="relative max-h-[90svh] w-full max-w-5xl rounded-xl bg-popover p-3 shadow-lg"
+            className="relative flex max-h-[95svh] h-[95svh] w-[95vw] flex-col overflow-hidden rounded-xl bg-popover p-3 shadow-lg"
+            onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
           >
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
-              className="absolute right-2 top-2 bg-background/80"
+              className="absolute right-2 top-2 z-10 bg-background/80"
               onClick={() => setZoomFotoUrl(null)}
             >
               ×
@@ -668,13 +837,14 @@ export function BatchListPage({
             <img
               src={zoomFotoUrl}
               alt="Preview foto makanan"
-              className="max-h-[84svh] w-full rounded-lg object-contain"
+              className="h-full w-full rounded-lg object-contain"
             />
           </div>
-        </div>
+        </div>,
+        document.body
       ) : null}
 
-      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && !isDeletingBatch && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia>
@@ -686,15 +856,16 @@ export function BatchListPage({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletingBatch}>Batal</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
+              disabled={isDeletingBatch}
               onClick={(event) => {
                 event.preventDefault()
                 void deleteBatch()
               }}
             >
-              Hapus
+              {isDeletingBatch ? "Menghapus..." : "Hapus"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

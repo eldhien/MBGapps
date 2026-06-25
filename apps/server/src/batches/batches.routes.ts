@@ -1,18 +1,96 @@
 import { Router } from "express"
-import { LegacyBatchStatus } from "@prisma/client"
+import { LegacyBatchStatus, UserRole } from "@prisma/client"
 
+import { getCurrentUser } from "../auth/session.js"
 import { prisma } from "../lib/prisma.js"
 
 export const batchesRouter = Router()
 const batchStatuses = new Set<string>(Object.values(LegacyBatchStatus))
 
-batchesRouter.get("/", async (_req, res, next) => {
-  try {
-    const batches = await prisma.batch.findMany({
-      orderBy: { createdAt: "desc" },
-      include: { distributions: true },
+function isUuid(value?: string | null) {
+  return Boolean(
+    value?.match(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    )
+  )
+}
+
+async function getCurrentSchoolId(user: {
+  id: string
+  role: UserRole | string
+  username: string
+}) {
+  if (isUuid(user.id)) {
+    const currentUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { schoolId: true },
     })
-    res.json({ data: batches })
+
+    return currentUser?.schoolId ?? null
+  }
+
+  const existingUser = await prisma.user.findUnique({
+    where: { username: user.username },
+    select: { schoolId: true },
+  })
+
+  return existingUser?.schoolId ?? null
+}
+
+batchesRouter.get("/", async (req, res, next) => {
+  try {
+    const currentUser = await getCurrentUser(req)
+
+    if (currentUser?.role === UserRole.SEKOLAH) {
+      const schoolId = await getCurrentSchoolId(currentUser)
+
+      if (!schoolId) {
+        return res.json({ data: [] })
+      }
+
+      const rows = await prisma.batchDistributionSchool.findMany({
+        where: {
+          schoolId,
+          status: { in: ["DITERIMA", "DITOLAK"] },
+        },
+        orderBy: { updatedAt: "desc" },
+        include: {
+          distribution: {
+            include: {
+              batch: {
+                include: { menu: true },
+              },
+            },
+          },
+        },
+      })
+
+      return res.json({
+        data: rows.map((row) => ({
+          id: row.distribution.batch.id,
+          batchIdUnik: row.distribution.batch.id,
+          namaMenu: row.distribution.batch.menu.name,
+          waktuProduksi:
+            row.distribution.batch.waktuMulai?.toISOString() ??
+            row.distribution.batch.createdAt.toISOString(),
+          status: row.status,
+        })),
+      })
+    }
+
+    const batches = await prisma.batchProduksi.findMany({
+      orderBy: { createdAt: "desc" },
+      include: { menu: true },
+    })
+    res.json({
+      data: batches.map((batch) => ({
+        id: batch.id,
+        batchIdUnik: batch.id,
+        namaMenu: batch.menu.name,
+        waktuProduksi: batch.waktuMulai?.toISOString() ?? batch.createdAt.toISOString(),
+        status: batch.status,
+      })),
+    })
   } catch (error) {
     res.json({ data: [] })
   }

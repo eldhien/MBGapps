@@ -735,6 +735,8 @@ schoolDistributionsRouter.get("/", async (req, res, next) => {
       })
     }
 
+    await ensureBatchStatusFinalValues()
+
     // Get the SPPG that manages this school
     const schoolRecord = await prisma.school.findUnique({
       where: { id: schoolId },

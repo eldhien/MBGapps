@@ -46,12 +46,27 @@ function Button({
   variant = "default",
   size = "default",
   asChild = false,
+  type,
+  disabled,
+  pending = false,
+  onClick,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
     asChild?: boolean
+    pending?: boolean
   }) {
   const Comp = asChild ? Slot.Root : "button"
+
+  const handleClick: React.MouseEventHandler<HTMLButtonElement> = (event) => {
+    if (disabled || pending) {
+      event.preventDefault()
+      event.stopPropagation()
+      return
+    }
+
+    onClick?.(event)
+  }
 
   return (
     <Comp
@@ -59,6 +74,10 @@ function Button({
       data-variant={variant}
       data-size={size}
       className={cn(buttonVariants({ variant, size, className }))}
+      type={type}
+      disabled={disabled || pending}
+      aria-busy={pending || undefined}
+      onClick={handleClick}
       {...props}
     />
   )

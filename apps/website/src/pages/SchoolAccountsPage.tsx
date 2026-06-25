@@ -72,6 +72,8 @@ export function SchoolAccountsPage() {
   const [form, setForm] = useState<FormState>(initialForm)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(!cachedSchools)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDeletingSchool, setIsDeletingSchool] = useState(false)
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<SchoolAccount | null>(null)
   const [schools, setSchools] = useState<SchoolAccount[]>(
@@ -148,9 +150,12 @@ export function SchoolAccountsPage() {
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (isSubmitting) return
+
     setAlertMessage(null)
     setDialogError(null)
     setError(null)
+    setIsSubmitting(true)
 
     try {
       const payload = {
@@ -192,13 +197,16 @@ export function SchoolAccountsPage() {
       setDialogError(
         error instanceof Error ? error.message : "Gagal membuat akun sekolah."
       )
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   async function deleteSchoolAccount() {
-    if (!deleteTarget) return
+    if (!deleteTarget || isDeletingSchool) return
     setAlertMessage(null)
     setError(null)
+    setIsDeletingSchool(true)
 
     try {
       await api.schoolAccounts.delete(deleteTarget.id)
@@ -214,6 +222,8 @@ export function SchoolAccountsPage() {
       setError(
         error instanceof Error ? error.message : "Gagal menghapus akun sekolah."
       )
+    } finally {
+      setIsDeletingSchool(false)
     }
   }
 
@@ -510,16 +520,22 @@ export function SchoolAccountsPage() {
               >
                 Batal
               </Button>
-              <Button type="submit">
+              <Button type="submit" pending={isSubmitting} disabled={isSubmitting}>
                 <PlusIcon />
-                {form.id ? "Simpan" : "Tambah"}
+                {isSubmitting
+                  ? form.id
+                    ? "Menyimpan..."
+                    : "Menambah..."
+                  : form.id
+                  ? "Simpan"
+                  : "Tambah"}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && !isDeletingSchool && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia>
@@ -531,15 +547,16 @@ export function SchoolAccountsPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletingSchool}>Batal</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
+              disabled={isDeletingSchool}
               onClick={(event) => {
                 event.preventDefault()
                 void deleteSchoolAccount()
               }}
             >
-              Hapus
+              {isDeletingSchool ? "Menghapus..." : "Hapus"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

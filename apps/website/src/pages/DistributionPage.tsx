@@ -46,7 +46,7 @@ import {
 import { DashboardShell } from "@/pages/components/DashboardShell"
 
 type SchoolRow = {
-  jumlahPorsi: number
+  jumlahPorsi: string
   schoolId: string
 }
 
@@ -89,6 +89,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
     !cachedBatches || !cachedDistributions || !cachedSchools || !cachedDrivers
   )
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
   const [viewTarget, setViewTarget] = useState<ProductionDistribution | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ProductionDistribution | null>(null)
@@ -99,7 +100,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
   const [editSchoolRows, setEditSchoolRows] = useState<SchoolRow[]>([])
   const [waktuKirim, setWaktuKirim] = useState(getCurrentDateTimeLocal())
   const [schoolRows, setSchoolRows] = useState<SchoolRow[]>([
-    { jumlahPorsi: 0, schoolId: "" },
+    { jumlahPorsi: "", schoolId: "" },
   ])
 
   const selectedSchoolIds = useMemo(
@@ -253,15 +254,17 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
     setEditSchoolRows(
       distribution.schools.length
         ? distribution.schools.map((item) => ({
-            jumlahPorsi: Number(item.jumlahPorsi ?? 0),
+            jumlahPorsi: String(item.jumlahPorsi ?? ""),
             schoolId: item.school.id,
           }))
-        : [{ jumlahPorsi: 0, schoolId: "" }]
+        : [{ jumlahPorsi: "", schoolId: "" }]
     )
   }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (isSubmitting) return
+
     setError(null)
     setSuccess(null)
     setIsSubmitting(true)
@@ -311,7 +314,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
       setBatchId("")
       navigate("/distribution", { replace: true })
       setDriverId("")
-      setSchoolRows([{ jumlahPorsi: 0, schoolId: "" }])
+      setSchoolRows([{ jumlahPorsi: "", schoolId: "" }])
       setWaktuKirim(getCurrentDateTimeLocal())
       setSuccess("Distribusi berhasil dibuat dan tampil di akun sekolah terkait.")
     } catch (error) {
@@ -325,7 +328,11 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
 
   async function saveDistributionEdit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!editTarget) return
+    if (!editTarget || isSavingEdit) return
+
+    setError(null)
+    setSuccess(null)
+    setIsSavingEdit(true)
 
     try {
       const payloadSchools = editSchoolRows
@@ -374,6 +381,8 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
       setSuccess("Distribusi berhasil diperbarui.")
     } catch (error) {
       setError(error instanceof Error ? error.message : "Gagal mengedit distribusi.")
+    } finally {
+      setIsSavingEdit(false)
     }
   }
 
@@ -496,7 +505,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                 onClick={() =>
                   setSchoolRows((current) => [
                     ...current,
-                    { jumlahPorsi: 0, schoolId: "" },
+                    { jumlahPorsi: "", schoolId: "" },
                   ])
                 }
               >
@@ -539,11 +548,12 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                   Jumlah porsi
                   <Input
                     type="number"
-                    min={1}
+                    inputMode="numeric"
+                    step="1"
                     value={row.jumlahPorsi}
                     onChange={(event) =>
                       updateSchoolRow(index, {
-                        jumlahPorsi: Number(event.target.value),
+                        jumlahPorsi: event.target.value,
                       })
                     }
                     required
@@ -569,7 +579,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
           </div>
 
           <div className="flex justify-end">
-            <Button type="submit" disabled={isSubmitting}>
+            <Button type="submit" pending={isSubmitting} disabled={isSubmitting}>
               <SendIcon />
               {isSubmitting ? "Menyimpan..." : "Submit Distribusi"}
             </Button>
@@ -788,7 +798,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                   onClick={() =>
                     setEditSchoolRows((current) => [
                       ...current,
-                      { jumlahPorsi: 0, schoolId: "" },
+                      { jumlahPorsi: "", schoolId: "" },
                     ])
                   }
                 >
@@ -830,12 +840,13 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                   <label className="grid gap-2 text-sm font-medium">
                     Jumlah porsi
                     <Input
-                      min={1}
                       type="number"
+                      inputMode="numeric"
+                      step="1"
                       value={row.jumlahPorsi}
                       onChange={(event) =>
                         updateEditSchoolRow(index, {
-                          jumlahPorsi: Number(event.target.value),
+                          jumlahPorsi: event.target.value,
                         })
                       }
                       required
@@ -865,7 +876,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
               <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>
                 Batal
               </Button>
-              <Button type="submit">Simpan</Button>
+              <Button type="submit" pending={isSavingEdit} disabled={isSavingEdit}>Simpan</Button>
             </div>
           </form>
         </DialogContent>

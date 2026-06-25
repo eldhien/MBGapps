@@ -52,6 +52,7 @@ export function DriversPage() {
   const [form, setForm] = useState<FormState>(initialForm)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(!cachedDrivers)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Driver | null>(null)
 
   const sortedDrivers = useMemo(
@@ -104,8 +105,11 @@ export function DriversPage() {
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (isSubmitting) return
+
     setError(null)
     setSuccess(null)
+    setIsSubmitting(true)
 
     try {
       const payload = {
@@ -137,6 +141,8 @@ export function DriversPage() {
       setForm(initialForm)
     } catch (error) {
       setError(error instanceof Error ? error.message : "Gagal menyimpan driver.")
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -381,7 +387,7 @@ export function DriversPage() {
               >
                 Batal
               </Button>
-              <Button type="submit">{form.id ? "Simpan" : "Tambah"}</Button>
+              <Button type="submit" pending={isSubmitting} disabled={isSubmitting}>{form.id ? "Simpan" : "Tambah"}</Button>
             </DialogFooter>
           </form>
         </DialogContent>

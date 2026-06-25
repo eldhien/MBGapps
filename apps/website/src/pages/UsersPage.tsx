@@ -66,6 +66,7 @@ export function UsersPage() {
   const [form, setForm] = useState<FormState>(initialForm)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(!cachedUsers)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [users, setUsers] = useState<ManagedUser[]>(() => cachedUsers ?? [])
 
@@ -131,9 +132,12 @@ export function UsersPage() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (isSubmitting) return
+
     setAlertMessage(null)
     setDialogError(null)
     setError(null)
+    setIsSubmitting(true)
 
     try {
       if (isEditing && form.id) {
@@ -172,6 +176,8 @@ export function UsersPage() {
       setDialogError(
         error instanceof Error ? error.message : "Gagal menyimpan pengguna."
       )
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -428,7 +434,7 @@ export function UsersPage() {
               >
                 Batal
               </Button>
-              <Button type="submit">
+              <Button type="submit" pending={isSubmitting} disabled={isSubmitting}>
                 {isEditing ? <PencilIcon /> : <PlusIcon />}
                 {isEditing ? "Simpan" : "Tambah"}
               </Button>

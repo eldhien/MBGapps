@@ -44,6 +44,11 @@ export function BatchCreatePage() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
+
+    if (isLoading) {
+      return
+    }
+
     setError(null)
 
     if (cleanedKomposisi.length === 0) {
@@ -156,8 +161,9 @@ export function BatchCreatePage() {
             </label>
             <Input
               required
-              min={1}
               type="number"
+              inputMode="numeric"
+              step="1"
               placeholder="Contoh: 500"
               value={form.jumlahPorsi}
               onChange={(event) =>
@@ -259,7 +265,7 @@ export function BatchCreatePage() {
           <Button type="button" variant="outline" onClick={() => navigate("/batch")}>
             Batal
           </Button>
-          <Button type="submit" disabled={isLoading}>
+          <Button type="submit" pending={isLoading} disabled={isLoading}>
             {isLoading ? "Menyimpan..." : "Simpan Batch"}
           </Button>
         </div>

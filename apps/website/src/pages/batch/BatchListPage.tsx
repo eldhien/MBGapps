@@ -38,6 +38,13 @@ type KomposisiItem = {
   namaBahan: string
 }
 
+type EditFormState = {
+  namaMenu: string
+  totalPorsi: string
+  waktuMulai: string
+  waktuSelesai: string
+}
+
 const createEmptyKomposisi = (): KomposisiItem => ({ namaBahan: "" })
 
 function toDateTimeLocal(value?: string | null) {
@@ -71,6 +78,7 @@ export function BatchListPage({
   const [batches, setBatches] = useState<any[]>(() => cachedBatches ?? [])
   const [isLoading, setIsLoading] = useState(!cachedBatches)
   const [error, setError] = useState<string | null>(null)
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
   const [viewTarget, setViewTarget] = useState<any>(null)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [editTarget, setEditTarget] = useState<any>(null)
@@ -80,9 +88,9 @@ export function BatchListPage({
   const [editKomposisi, setEditKomposisi] = useState<KomposisiItem[]>([
     createEmptyKomposisi(),
   ])
-  const [editForm, setEditForm] = useState({
+  const [editForm, setEditForm] = useState<EditFormState>({
     namaMenu: "",
-    totalPorsi: 0,
+    totalPorsi: "",
     waktuMulai: "",
     waktuSelesai: "",
   })
@@ -149,7 +157,7 @@ export function BatchListPage({
     )
     setEditForm({
       namaMenu: batch.menu?.name ?? "",
-      totalPorsi: Number(batch.totalPorsi ?? 0),
+      totalPorsi: String(batch.totalPorsi ?? ""),
       waktuMulai: toDateTimeLocal(batch.waktuMulai),
       waktuSelesai: toDateTimeLocal(batch.waktuSelesai),
     })
@@ -157,7 +165,10 @@ export function BatchListPage({
 
   async function saveBatchEdit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!editTarget) return
+    if (!editTarget || isSavingEdit) return
+
+    setError(null)
+    setIsSavingEdit(true)
 
     try {
       const cleanedKomposisi = editKomposisi
@@ -171,7 +182,7 @@ export function BatchListPage({
 
       let updated = await api.productionBatches.update(editTarget.id, {
         namaMenu: editForm.namaMenu.trim(),
-        totalPorsi: editForm.totalPorsi,
+        totalPorsi: Number(editForm.totalPorsi),
         waktuMulai: editForm.waktuMulai || undefined,
         waktuSelesai: editForm.waktuSelesai || undefined,
         varian: [
@@ -209,6 +220,8 @@ export function BatchListPage({
       setEditFotoPreview(null)
     } catch (err: any) {
       setError(err.message || "Gagal mengedit batch")
+    } finally {
+      setIsSavingEdit(false)
     }
   }
 
@@ -478,13 +491,14 @@ export function BatchListPage({
               <label className="grid gap-2 text-sm font-medium">
                 Jumlah porsi
                 <Input
-                  min={1}
                   type="number"
+                  inputMode="numeric"
+                  step="1"
                   value={editForm.totalPorsi}
                   onChange={(event) =>
                     setEditForm((current) => ({
                       ...current,
-                      totalPorsi: Number(event.target.value),
+                      totalPorsi: event.target.value,
                     }))
                   }
                   required
@@ -664,7 +678,7 @@ export function BatchListPage({
               <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>
                 Batal
               </Button>
-              <Button type="submit">Simpan</Button>
+              <Button type="submit" pending={isSavingEdit} disabled={isSavingEdit}>Simpan</Button>
             </div>
           </form>
         </DialogContent>

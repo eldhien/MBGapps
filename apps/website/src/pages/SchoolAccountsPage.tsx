@@ -72,6 +72,7 @@ export function SchoolAccountsPage() {
   const [form, setForm] = useState<FormState>(initialForm)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(!cachedSchools)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<SchoolAccount | null>(null)
   const [schools, setSchools] = useState<SchoolAccount[]>(
@@ -148,9 +149,12 @@ export function SchoolAccountsPage() {
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (isSubmitting) return
+
     setAlertMessage(null)
     setDialogError(null)
     setError(null)
+    setIsSubmitting(true)
 
     try {
       const payload = {
@@ -192,6 +196,8 @@ export function SchoolAccountsPage() {
       setDialogError(
         error instanceof Error ? error.message : "Gagal membuat akun sekolah."
       )
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -510,7 +516,7 @@ export function SchoolAccountsPage() {
               >
                 Batal
               </Button>
-              <Button type="submit">
+              <Button type="submit" pending={isSubmitting} disabled={isSubmitting}>
                 <PlusIcon />
                 {form.id ? "Simpan" : "Tambah"}
               </Button>

@@ -41,6 +41,7 @@ import {
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
+  subscribePageCache,
 } from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 
@@ -53,6 +54,12 @@ function getCurrentDateTimeLocal() {
   const value = new Date()
   value.setMinutes(value.getMinutes() - value.getTimezoneOffset())
   return value.toISOString().slice(0, 16)
+}
+
+function getDistributionStatus(distribution: ProductionDistribution) {
+  return distribution.schools.some((item) => item.status === "DITOLAK")
+    ? "DITOLAK"
+    : distribution.status
 }
 
 export function DistributionPage({ mode = "create" }: { mode?: "create" | "history" }) {
@@ -103,18 +110,20 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
     () => new Set(editSchoolRows.map((row) => row.schoolId).filter(Boolean)),
     [editSchoolRows]
   )
+  const productionBatches = useMemo(
+    () => batches.filter((batch) => batch.status === "DIPRODUKSI"),
+    [batches]
+  )
+  const editableBatches = useMemo(
+    () =>
+      batches.filter(
+        (batch) => batch.status === "DIPRODUKSI" || batch.id === editBatchId
+      ),
+    [batches, editBatchId]
+  )
 
-  async function loadData() {
-    if (cachedBatches && cachedDistributions && cachedSchools && cachedDrivers) {
-      setBatches(cachedBatches)
-      setDrivers(cachedDrivers)
-      setSchools(cachedSchools)
-      setDistributions(cachedDistributions)
-      setIsLoading(false)
-      return
-    }
-
-    setIsLoading(true)
+  async function fetchLatestData(showLoading: boolean) {
+    if (showLoading) setIsLoading(true)
     setError(null)
 
     try {
@@ -140,12 +149,74 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
         error instanceof Error ? error.message : "Gagal memuat distribusi."
       )
     } finally {
-      setIsLoading(false)
+      if (showLoading) setIsLoading(false)
     }
+  }
+
+  async function loadData(force = false) {
+    if (!force) {
+      const batchesCache = getCachedPageData<any[]>(pageCacheKeys.productionBatches)
+      const distributionsCache = getCachedPageData<ProductionDistribution[]>(
+        pageCacheKeys.productionDistributions
+      )
+      const schoolsCache = getCachedPageData<SchoolAccount[]>(pageCacheKeys.schoolAccounts)
+      const driversCache = getCachedPageData<Driver[]>(pageCacheKeys.drivers)
+
+      if (batchesCache && distributionsCache && schoolsCache && driversCache) {
+        setBatches(batchesCache)
+        setDrivers(driversCache)
+        setSchools(schoolsCache)
+        setDistributions(distributionsCache)
+        setIsLoading(false)
+        void fetchLatestData(false)
+        return
+      }
+    }
+
+    await fetchLatestData(true)
   }
 
   useEffect(() => {
     void loadData()
+  }, [])
+
+  useEffect(() => {
+    const unsubscribeDistributions = subscribePageCache<ProductionDistribution[]>(
+      pageCacheKeys.productionDistributions,
+      (cachedData) => {
+        if (cachedData) {
+          setDistributions(cachedData)
+          setIsLoading(false)
+        }
+      }
+    )
+    const unsubscribeBatches = subscribePageCache<any[]>(
+      pageCacheKeys.productionBatches,
+      (cachedData) => {
+        if (cachedData) setBatches(cachedData)
+      }
+    )
+
+    return () => {
+      unsubscribeDistributions()
+      unsubscribeBatches()
+    }
+  }, [])
+
+  useEffect(() => {
+    const refresh = () => {
+      void fetchLatestData(false)
+    }
+
+    window.addEventListener("focus", refresh)
+    window.addEventListener("pageshow", refresh)
+    const intervalId = window.setInterval(refresh, 15_000)
+
+    return () => {
+      window.removeEventListener("focus", refresh)
+      window.removeEventListener("pageshow", refresh)
+      window.clearInterval(intervalId)
+    }
   }, [])
 
   useEffect(() => {
@@ -380,7 +451,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                 required
               >
                 <option value="">Pilih batch...</option>
-                {batches.map((batch) => (
+                {productionBatches.map((batch) => (
                   <option key={batch.id} value={batch.id}>
                     {batch.id} - {batch.menu?.name ?? "Menu"}
                   </option>
@@ -567,7 +638,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                       ? new Date(distribution.waktuKirim).toLocaleString("id-ID")
                       : "-"}
                   </td>
-                  <td className="px-4 py-3">{distribution.status}</td>
+                  <td className="px-4 py-3">{getDistributionStatus(distribution)}</td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
                       <Button
@@ -672,7 +743,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                   required
                 >
                   <option value="">Pilih batch...</option>
-                  {batches.map((batch) => (
+                  {editableBatches.map((batch) => (
                     <option key={batch.id} value={batch.id}>
                       {batch.id} - {batch.menu?.name ?? "Menu"}
                     </option>

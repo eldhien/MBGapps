@@ -30,7 +30,6 @@ import {
 } from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 import { CheckCircle2Icon, EyeIcon, PencilIcon, PlusIcon, Trash2Icon, TruckIcon, TriangleAlertIcon } from "lucide-react"
-import { QRCodeSVG } from "qrcode.react"
 import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import { Link, useNavigate } from "react-router-dom"
@@ -266,7 +265,7 @@ export function BatchListPage({
             Riwayat Batch Makanan
           </h1>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Pantau batch produksi, status distribusi, QR, dan detail menu yang sudah dibuat.
+            Pantau batch produksi, status distribusi, dan detail menu yang sudah dibuat.
           </p>
         </div>
       </section>
@@ -398,19 +397,9 @@ export function BatchListPage({
           </DialogHeader>
           {viewTarget ? (
             <div className="grid gap-5">
-              <div className="flex flex-col items-center gap-3 rounded-xl border bg-muted/20 p-4 text-center">
-                <div className="rounded-lg border bg-white p-3">
-                  <QRCodeSVG
-                    value={`${window.location.origin}/batch-info/${viewTarget.id}`}
-                    size={120}
-                  />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">ID Batch</p>
-                  <p className="break-all text-sm font-semibold">
-                    {viewTarget.id}
-                  </p>
-                </div>
+              <div className="rounded-xl border bg-muted/20 p-4">
+                <p className="text-xs text-muted-foreground">ID Batch</p>
+                <p className="break-all text-sm font-semibold">{viewTarget.id}</p>
               </div>
               <div className="grid gap-2">
                 <p className="text-sm font-medium">Foto makanan</p>
@@ -423,7 +412,7 @@ export function BatchListPage({
                     <img
                       src={getLatestFoodPhotoUrl(viewTarget)}
                       alt={`Foto makanan batch ${viewTarget.id}`}
-                      className="h-24 w-full object-cover transition group-hover:opacity-90"
+                      className="h-20 w-full object-cover transition group-hover:opacity-90"
                     />
                     <span className="block border-t px-2 py-1 text-xs text-muted-foreground">
                       Klik untuk zoom
@@ -547,7 +536,7 @@ export function BatchListPage({
                             ? "Preview foto makanan baru"
                             : `Foto makanan batch ${editTarget?.id}`
                         }
-                        className="h-24 w-full object-cover transition group-hover:opacity-90"
+                        className="h-20 w-full object-cover transition group-hover:opacity-90"
                       />
                       <p className={cn(
                         "border-t px-2 py-1 text-xs",

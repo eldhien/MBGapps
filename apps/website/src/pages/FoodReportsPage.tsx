@@ -78,12 +78,23 @@ export function FoodReportsPage({
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [form, setForm] = useState({ ...initialForm, batchId: prefilledBatchId })
+  const selectableBatches = batches.filter(
+    (batch) => ["DITERIMA", "DITOLAK", "SELESAI"].includes(batch.status)
+  )
 
   useEffect(() => {
     void loadData()
   }, [])
 
+  useEffect(() => {
+    if (prefilledBatchId) {
+      setForm((current) => ({ ...current, batchId: prefilledBatchId }))
+    }
+  }, [prefilledBatchId])
+
   const loadData = async (force = false) => {
+    let usedCache = false
+
     if (!force) {
       const reportsCache = getCachedPageData<FoodReport[]>(
         pageCacheKeys.foodReports
@@ -96,11 +107,11 @@ export function FoodReportsPage({
         setReports(reportsCache)
         setBatches(batchesCache ?? [])
         setLoading(false)
-        return
+        usedCache = true
       }
     }
 
-    setLoading(true)
+    if (!usedCache) setLoading(true)
     setError(null)
 
     try {
@@ -116,7 +127,7 @@ export function FoodReportsPage({
             reportsResponse.value.data
           )
         )
-      } else {
+      } else if (!usedCache) {
         throw reportsResponse.reason
       }
 
@@ -318,7 +329,7 @@ export function FoodReportsPage({
                   }
                 >
                   <option value="">Pilih nanti / tidak diketahui</option>
-                  {batches.map((batch) => (
+                  {selectableBatches.map((batch) => (
                     <option key={batch.id} value={batch.id}>
                       {batch.batchIdUnik} · {batch.namaMenu}
                     </option>

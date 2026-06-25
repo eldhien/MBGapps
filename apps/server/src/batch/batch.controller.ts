@@ -195,7 +195,7 @@ export const updateBatchStatus = async (req: Request, res: Response): Promise<vo
     const id = req.params.id as string
     const { status, catatanKualitas } = req.body
 
-    const validStatuses = ["DRAFT", "DIPRODUKSI", "SIAP_KIRIM", "TERKIRIM"]
+    const validStatuses = ["DRAFT", "DIPRODUKSI", "SIAP_KIRIM", "TERKIRIM", "DITERIMA", "DITOLAK"]
     if (!validStatuses.includes(status)) {
       res.status(400).json({ message: "Invalid status" })
       return

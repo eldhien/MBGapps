@@ -850,7 +850,7 @@ export function KitchenChecklistPage({
       <Dialog
         open={Boolean(editTarget)}
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && !zoomPhoto) {
             closeEditReport()
           }
         }}
@@ -892,7 +892,7 @@ export function KitchenChecklistPage({
                         htmlFor={inputId}
                         className="mt-3 block cursor-pointer overflow-hidden rounded-lg border bg-muted/40"
                       >
-                        <div className="aspect-video w-full">
+                        <div className="h-20 w-full">
                           <img
                             src={preview}
                             alt={item.label}
@@ -949,7 +949,7 @@ export function KitchenChecklistPage({
       <Dialog
         open={Boolean(viewTarget)}
         onOpenChange={(open) => {
-          if (!open) setViewTarget(null)
+          if (!open && !zoomPhoto) setViewTarget(null)
         }}
       >
         <DialogContent className="sm:max-w-3xl">
@@ -975,7 +975,7 @@ export function KitchenChecklistPage({
                     className="overflow-hidden rounded-xl border bg-muted/30 text-left transition hover:bg-muted/50"
                     onClick={() => setZoomPhoto({ label: photo.label, url: photo.value })}
                   >
-                    <div className="aspect-video w-full overflow-hidden">
+                    <div className="h-20 w-full overflow-hidden">
                       <img
                         src={photo.value}
                         alt={photo.label}

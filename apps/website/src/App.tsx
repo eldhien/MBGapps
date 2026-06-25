@@ -16,7 +16,6 @@ import { SchoolAccountsPage } from "@/pages/SchoolAccountsPage"
 import { UsersPage } from "@/pages/UsersPage"
 import { BatchListPage } from "@/pages/batch/BatchListPage"
 import { BatchCreatePage } from "@/pages/batch/BatchCreatePage"
-import { BatchScanPage } from "@/pages/batch/BatchScanPage"
 
 const implementedPaths = new Set([
   "/dashboard",
@@ -29,7 +28,6 @@ const implementedPaths = new Set([
   "/master-data/drivers",
   "/reports",
   "/receiving-validation",
-  "/scan-qr",
   "/cleanliness-reports",
   "/cleanliness-reports/upload",
   "/cleanliness-reports/history",
@@ -50,7 +48,6 @@ export function App() {
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/batch-info/*" element={<BatchScanPage />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route
@@ -253,14 +250,6 @@ export function App() {
           element={
             <RoleRoute>
               <SchoolDistributionsPage />
-            </RoleRoute>
-          }
-        />
-        <Route
-          path="/scan-qr"
-          element={
-            <RoleRoute>
-              <BatchScanPage />
             </RoleRoute>
           }
         />

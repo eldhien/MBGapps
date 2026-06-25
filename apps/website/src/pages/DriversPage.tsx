@@ -351,8 +351,13 @@ export function DriversPage() {
               No HP
               <Input
                 value={form.phone}
+                inputMode="numeric"
+                pattern="[0-9]*"
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, phone: event.target.value }))
+                  setForm((current) => ({
+                    ...current,
+                    phone: event.target.value.replace(/\D/g, ""),
+                  }))
                 }
               />
             </label>

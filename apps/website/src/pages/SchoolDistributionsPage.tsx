@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import { CheckIcon, CheckCircle2Icon, ClockIcon, TruckIcon, PackageCheckIcon, XIcon, ImageIcon, ZoomInIcon, FlagIcon } from "lucide-react"
 import { createPortal } from "react-dom"
 import { useNavigate } from "react-router-dom"
@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils"
 
 function getStep(distribution: SchoolDistribution): 1 | 2 | 3 {
   if (distribution.status === "DITERIMA") return 3
+  if (distribution.status === "DITOLAK") return 3
   if (
     distribution.distribution.status === "DIKIRIM" ||
     distribution.distribution.status === "SELESAI"
@@ -55,11 +56,11 @@ function formatDate(iso: string | null): string {
   })
 }
 
-function ProcessTracker({ step }: { step: 1 | 2 | 3 }) {
+function ProcessTracker({ rejected = false, step }: { rejected?: boolean; step: 1 | 2 | 3 }) {
   const steps = [
     { label: "Batch Dibuat", icon: PackageCheckIcon },
     { label: "Dalam Antar", icon: TruckIcon },
-    { label: "Diterima Sekolah", icon: CheckCircle2Icon },
+    { label: rejected ? "Ditolak Sekolah" : "Diterima Sekolah", icon: rejected ? XIcon : CheckCircle2Icon },
   ]
 
   return (
@@ -77,7 +78,9 @@ function ProcessTracker({ step }: { step: 1 | 2 | 3 }) {
                 className={cn(
                   "flex h-9 w-9 items-center justify-center rounded-full border-2 transition-all",
                   isDone
-                    ? "border-green-500 bg-green-500 text-white"
+                    ? rejected && isLast
+                      ? "border-red-500 bg-red-500 text-white"
+                      : "border-green-500 bg-green-500 text-white"
                     : "border-muted-foreground/30 bg-muted text-muted-foreground/50"
                 )}
               >
@@ -90,7 +93,11 @@ function ProcessTracker({ step }: { step: 1 | 2 | 3 }) {
               <span
                 className={cn(
                   "text-center text-xs font-medium leading-tight",
-                  isDone ? "text-green-600 dark:text-green-400" : "text-muted-foreground/60"
+                  isDone
+                    ? rejected && isLast
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-green-600 dark:text-green-400"
+                    : "text-muted-foreground/60"
                 )}
               >
                 {s.label}
@@ -153,6 +160,16 @@ function PhotoThumb({
 }
 
 function PhotoLightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  function closePreview(event: React.SyntheticEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    onClose()
+  }
+
+  function keepPreviewOpen(event: React.SyntheticEvent) {
+    event.stopPropagation()
+  }
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose()
@@ -163,12 +180,14 @@ function PhotoLightbox({ url, onClose }: { url: string; onClose: () => void }) {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4"
-      onClick={(e) => { e.stopPropagation(); onClose() }}
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4 pointer-events-auto"
+      onClick={closePreview}
+      onPointerDown={closePreview}
     >
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); onClose() }}
+        onClick={closePreview}
+        onPointerDown={closePreview}
         className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
         aria-label="Tutup"
       >
@@ -178,7 +197,8 @@ function PhotoLightbox({ url, onClose }: { url: string; onClose: () => void }) {
         src={url}
         alt="Preview foto"
         className="max-h-[92vh] max-w-[95vw] rounded-xl object-contain shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        onClick={keepPreviewOpen}
+        onPointerDown={keepPreviewOpen}
       />
     </div>,
     document.body
@@ -189,38 +209,18 @@ function DetailModal({
   distribution,
   open,
   onClose,
-  onConfirmDiterima,
 }: {
   distribution: SchoolDistribution | null
   open: boolean
   onClose: () => void
-  onConfirmDiterima: (dist: SchoolDistribution, file: File, note: string) => void
 }) {
-  const [buktiFile, setBuktiFile] = useState<File | null>(null)
-  const [buktiPreview, setBuktiPreview] = useState<string | null>(null)
-  const [note, setNote] = useState("")
   const [zoomUrl, setZoomUrl] = useState<string | null>(null)
 
   useEffect(() => {
     if (!open) {
-      setBuktiFile(null)
-      setBuktiPreview(null)
-      setNote("")
       setZoomUrl(null)
     }
   }, [open])
-
-  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0] ?? null
-    setBuktiFile(file)
-    if (file) {
-      const reader = new FileReader()
-      reader.onload = (ev) => setBuktiPreview(ev.target?.result as string)
-      reader.readAsDataURL(file)
-    } else {
-      setBuktiPreview(null)
-    }
-  }
 
   if (!distribution) return null
 
@@ -228,15 +228,18 @@ function DetailModal({
   const isFinal = distribution.status === "DITERIMA" || distribution.status === "DITOLAK"
 
   const fotoMakananJadi = distribution.batch.foto?.find((f: any) => f.jenis === "MAKANAN_JADI")?.url
-  const fotoBuktiTerima = distribution.buktiTerimaFotoUrl ?? buktiPreview
+  const fotoBuktiTerima = distribution.buktiTerimaFotoUrl
 
   return (
     <>
       {zoomUrl && <PhotoLightbox url={zoomUrl} onClose={() => setZoomUrl(null)} />}
-      <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <Dialog open={open} onOpenChange={(o) => !o && !zoomUrl && onClose()}>
         <DialogContent
           className="max-h-[90svh] overflow-y-auto sm:max-w-2xl"
           onInteractOutside={(e) => {
+            if (zoomUrl) e.preventDefault()
+          }}
+          onEscapeKeyDown={(e) => {
             if (zoomUrl) e.preventDefault()
           }}
         >
@@ -249,7 +252,7 @@ function DetailModal({
             <p className="mb-4 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               Progres Pengiriman
             </p>
-            <ProcessTracker step={step} />
+            <ProcessTracker rejected={distribution.status === "DITOLAK"} step={step} />
             <div className="mt-4 grid grid-cols-3 gap-2 text-xs text-muted-foreground">
               <div className="text-center">
                 <p className="font-medium text-foreground/70">Dibuat</p>
@@ -304,6 +307,13 @@ function DetailModal({
             </div>
           </dl>
 
+          {fotoBuktiTerima ? (
+            <div className="grid gap-2 rounded-xl border p-4">
+              <p className="text-sm font-semibold">Foto Bukti Terima Sekolah</p>
+              <PhotoThumb url={fotoBuktiTerima} label="Bukti Terima" onZoom={setZoomUrl} />
+            </div>
+          ) : null}
+
           {isFinal ? (
             <div className={cn(
               "flex items-center gap-3 rounded-xl border p-4",
@@ -330,28 +340,105 @@ function DetailModal({
                 </p>
               </div>
             </div>
-          ) : step >= 2 ? (
-            <div className="grid gap-3 rounded-xl border p-4">
-              <p className="text-sm font-semibold">Konfirmasi Penerimaan</p>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
 
-              {/* Foto Bukti Terima */}
+function ValidationModal({
+  distribution,
+  open,
+  onClose,
+  onConfirmValidation,
+}: {
+  distribution: SchoolDistribution | null
+  open: boolean
+  onClose: () => void
+  onConfirmValidation: (
+    dist: SchoolDistribution,
+    status: "DITERIMA" | "DITOLAK",
+    file: File | null,
+    note: string
+  ) => void
+}) {
+  const [buktiFile, setBuktiFile] = useState<File | null>(null)
+  const [buktiPreview, setBuktiPreview] = useState<string | null>(null)
+  const [note, setNote] = useState("")
+  const [zoomUrl, setZoomUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) {
+      setBuktiFile(null)
+      setBuktiPreview(null)
+      setNote("")
+      setZoomUrl(null)
+    }
+  }, [open])
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0] ?? null
+    setBuktiFile(file)
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = (ev) => setBuktiPreview(ev.target?.result as string)
+      reader.readAsDataURL(file)
+    } else {
+      setBuktiPreview(null)
+    }
+  }
+
+  if (!distribution) return null
+
+  const step = getStep(distribution)
+  const fotoBuktiTerima = distribution.buktiTerimaFotoUrl ?? buktiPreview
+
+  return (
+    <>
+      {zoomUrl && <PhotoLightbox url={zoomUrl} onClose={() => setZoomUrl(null)} />}
+      <Dialog open={open} onOpenChange={(o) => !o && !zoomUrl && onClose()}>
+        <DialogContent
+          className="max-h-[90svh] overflow-y-auto sm:max-w-lg"
+          onInteractOutside={(e) => {
+            if (zoomUrl) e.preventDefault()
+          }}
+          onEscapeKeyDown={(e) => {
+            if (zoomUrl) e.preventDefault()
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Validasi Penerimaan</DialogTitle>
+            <DialogDescription>{distribution.batch.id}</DialogDescription>
+          </DialogHeader>
+
+          {step >= 2 ? (
+            <div className="grid gap-4">
+              <div className="rounded-xl border bg-muted/10 p-4">
+                <p className="text-xs text-muted-foreground">Batch</p>
+                <p className="font-semibold">{distribution.batch.id}</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {distribution.batch.menu?.name ?? "-"} · {distribution.jumlahPorsi.toLocaleString("id-ID")} porsi
+                </p>
+              </div>
+
               <div className="grid gap-1.5">
                 <p className="text-xs font-medium text-muted-foreground">Foto Bukti Terima Sekolah</p>
                 {fotoBuktiTerima ? (
-                  <div className="relative h-32 w-full overflow-hidden rounded-lg border">
+                  <button
+                    type="button"
+                    onClick={() => setZoomUrl(fotoBuktiTerima)}
+                    className="group relative h-32 w-full overflow-hidden rounded-lg border bg-muted/20 text-left"
+                  >
                     <img
                       src={fotoBuktiTerima}
                       alt="Bukti Terima"
-                      className="h-full w-full object-cover"
+                      className="h-full w-full object-cover transition group-hover:opacity-90"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setZoomUrl(fotoBuktiTerima)}
-                      className="absolute inset-0 flex items-center justify-center bg-black/0 transition hover:bg-black/20"
-                    >
-                      <ZoomInIcon className="h-5 w-5 text-white opacity-0 transition hover:opacity-100" />
-                    </button>
-                  </div>
+                    <span className="absolute bottom-0 left-0 right-0 bg-background/90 px-2 py-1 text-xs text-muted-foreground">
+                      Klik untuk zoom
+                    </span>
+                  </button>
                 ) : (
                   <label
                     className={cn(
@@ -373,45 +460,64 @@ function DetailModal({
                     <input type="file" accept="image/*" className="sr-only" onChange={handleFileChange} />
                   </label>
                 )}
-                {buktiFile && !fotoBuktiTerima && (
-                  <p className="text-xs text-muted-foreground">File dipilih: {buktiFile.name}</p>
-                )}
               </div>
 
               <label className="grid gap-1.5 text-xs font-medium text-muted-foreground">
-                Catatan (opsional)
+                Catatan
                 <textarea
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  rows={2}
-                  className="min-h-16 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  placeholder="Kondisi makanan, catatan khusus, dll."
+                  rows={3}
+                  className="min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                  placeholder="Kondisi makanan, catatan khusus, atau alasan jika ditolak."
                 />
               </label>
-              {!buktiFile && (
+
+              {!buktiFile && !distribution.buktiTerimaFotoUrl ? (
                 <p className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
-                  Wajib upload foto bukti terima sebelum mengkonfirmasi.
+                  Wajib upload foto sebelum menekan selesai atau ditolak.
                 </p>
-              )}
-              <Button
-                type="button"
-                className="w-full"
-                disabled={!buktiFile}
-                onClick={() => {
-                  if (buktiFile) {
-                    onConfirmDiterima(distribution, buktiFile, note)
+              ) : null}
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Button
+                  type="button"
+                  className="w-full"
+                  disabled={!buktiFile && !distribution.buktiTerimaFotoUrl}
+                  onClick={() => {
+                    if (buktiFile || distribution.buktiTerimaFotoUrl) {
+                      onConfirmValidation(distribution, "DITERIMA", buktiFile, note)
+                      onClose()
+                    }
+                  }}
+                >
+                  <CheckIcon className="mr-1.5 h-4 w-4" />
+                  Selesai
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructive"
+                  className="w-full"
+                  disabled={!note.trim() || (!buktiFile && !distribution.buktiTerimaFotoUrl)}
+                  onClick={() => {
+                    onConfirmValidation(distribution, "DITOLAK", buktiFile, note)
                     onClose()
-                  }
-                }}
-              >
-                <CheckIcon className="mr-1.5 h-4 w-4" />
-                Tandai Telah Sampai
-              </Button>
+                  }}
+                >
+                  <XIcon className="mr-1.5 h-4 w-4" />
+                  Ditolak
+                </Button>
+              </div>
+              {!note.trim() ? (
+                <p className="text-xs text-muted-foreground">
+                  Catatan dan foto wajib diisi jika makanan ditolak.
+                </p>
+              ) : null}
             </div>
           ) : (
             <div className="flex items-center gap-2 rounded-xl border bg-muted/10 p-4 text-sm text-muted-foreground">
               <ClockIcon className="h-4 w-4 shrink-0" />
-              Menunggu driver memulai pengiriman sebelum dapat dikonfirmasi.
+              Menunggu driver memulai pengiriman sebelum dapat divalidasi.
             </div>
           )}
         </DialogContent>
@@ -432,15 +538,17 @@ export function SchoolDistributionsPage() {
   const [isLoading, setIsLoading] = useState(!cachedDistributions)
   const [success, setSuccess] = useState<string | null>(null)
   const [viewTarget, setViewTarget] = useState<SchoolDistribution | null>(null)
-  const [confirmDiterimaPending, setConfirmDiterimaPending] = useState<{
+  const [validationTarget, setValidationTarget] = useState<SchoolDistribution | null>(null)
+  const [confirmValidationPending, setConfirmValidationPending] = useState<{
     distribution: SchoolDistribution
-    file: File
+    file: File | null
     note: string
+    status: "DITERIMA" | "DITOLAK"
   } | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  async function loadData() {
-    setIsLoading(true)
+  async function fetchLatestData(showLoading: boolean) {
+    if (showLoading) setIsLoading(true)
     setError(null)
     try {
       const response = await api.schoolDistributions.list()
@@ -450,8 +558,25 @@ export function SchoolDistributionsPage() {
     } catch (error) {
       setError(error instanceof Error ? error.message : "Gagal memuat distribusi.")
     } finally {
-      setIsLoading(false)
+      if (showLoading) setIsLoading(false)
     }
+  }
+
+  async function loadData(force = false) {
+    if (!force) {
+      const cachedData = getCachedPageData<SchoolDistribution[]>(
+        pageCacheKeys.schoolDistributions
+      )
+
+      if (cachedData) {
+        setDistributions(cachedData)
+        setIsLoading(false)
+        void fetchLatestData(false)
+        return
+      }
+    }
+
+    await fetchLatestData(true)
   }
 
   useEffect(() => {
@@ -470,17 +595,46 @@ export function SchoolDistributionsPage() {
     )
   }, [])
 
+  useEffect(() => {
+    setViewTarget((current) =>
+      current
+        ? distributions.find((distribution) => distribution.id === current.id) ?? null
+        : null
+    )
+    setValidationTarget((current) =>
+      current
+        ? distributions.find((distribution) => distribution.id === current.id) ?? null
+        : null
+    )
+  }, [distributions])
+
+  useEffect(() => {
+    const refresh = () => {
+      void fetchLatestData(false)
+    }
+
+    window.addEventListener("focus", refresh)
+    window.addEventListener("pageshow", refresh)
+    const intervalId = window.setInterval(refresh, 15_000)
+
+    return () => {
+      window.removeEventListener("focus", refresh)
+      window.removeEventListener("pageshow", refresh)
+      window.clearInterval(intervalId)
+    }
+  }, [])
 
 
-  async function executeDiterima() {
-    if (!confirmDiterimaPending) return
-    const { distribution, file, note } = confirmDiterimaPending
+
+  async function executeValidation() {
+    if (!confirmValidationPending) return
+    const { distribution, file, note, status } = confirmValidationPending
     setIsSubmitting(true)
     setError(null)
     setSuccess(null)
     try {
       const response = await api.schoolDistributions.updateStatus(distribution.id, {
-        status: "DITERIMA",
+        status,
         file,
         ...(note.trim() ? { rejectedReason: note.trim() } : {}),
       })
@@ -492,16 +646,76 @@ export function SchoolDistributionsPage() {
           )
         )
       )
-      setSuccess("Penerimaan makanan berhasil dikonfirmasi.")
+      const cachedBatches = getCachedPageData<any[]>(pageCacheKeys.productionBatches)
+      if (cachedBatches) {
+        setCachedPageData(
+          pageCacheKeys.productionBatches,
+          cachedBatches.map((batch) =>
+            batch.id === response.distribution.batch.id
+              ? { ...batch, status: response.distribution.batch.status }
+              : batch
+          )
+        )
+      }
+      const cachedBatchSummaries = getCachedPageData<any[]>(pageCacheKeys.batches)
+      if (cachedBatchSummaries) {
+        setCachedPageData(
+          pageCacheKeys.batches,
+          cachedBatchSummaries.map((batch) =>
+            batch.id === response.distribution.batch.id
+              ? { ...batch, status: response.distribution.batch.status }
+              : batch
+          )
+        )
+      }
+      const cachedDistributions = getCachedPageData<any[]>(
+        pageCacheKeys.productionDistributions
+      )
+      if (cachedDistributions) {
+        setCachedPageData(
+          pageCacheKeys.productionDistributions,
+          cachedDistributions.map((distribution) =>
+            distribution.id === response.distribution.distribution.id
+              ? {
+                  ...distribution,
+                  status: response.distribution.distribution.status,
+                  schools: distribution.schools?.map((school: any) =>
+                    school.id === response.distribution.id
+                      ? {
+                          ...school,
+                          status: response.distribution.status,
+                          receivedAt: response.distribution.receivedAt,
+                          rejectedReason: response.distribution.rejectedReason,
+                        }
+                      : school
+                  ),
+                }
+              : distribution
+          )
+        )
+      }
+      setSuccess(
+        status === "DITERIMA"
+          ? "Penerimaan makanan berhasil dikonfirmasi."
+          : "Penerimaan makanan berhasil ditolak."
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : "Gagal memperbarui status.")
     } finally {
       setIsSubmitting(false)
-      setConfirmDiterimaPending(null)
+      setConfirmValidationPending(null)
     }
   }
 
-  const pendingCount = distributions.filter(
+  const visibleDistributions = distributions.filter((distribution) => {
+    if (distribution.status !== "DITERIMA" && distribution.status !== "DITOLAK") {
+      return true
+    }
+    if (!distribution.receivedAt) return true
+    return Date.now() - new Date(distribution.receivedAt).getTime() < 24 * 60 * 60 * 1000
+  })
+
+  const pendingCount = visibleDistributions.filter(
     (d) => d.status !== "DITERIMA" && d.status !== "DITOLAK"
   ).length
 
@@ -540,7 +754,7 @@ export function SchoolDistributionsPage() {
         <div className="border-b p-4">
           <h2 className="text-lg font-semibold">Makanan Masuk</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Klik "Lihat Detail" untuk melihat progres pengiriman dan mengkonfirmasi penerimaan.
+            Klik "Validasi" untuk mengunggah foto, memberi catatan, dan menyelesaikan penerimaan.
           </p>
         </div>
 
@@ -555,7 +769,7 @@ export function SchoolDistributionsPage() {
               ))
             : null}
 
-          {distributions.map((distribution) => {
+          {visibleDistributions.map((distribution) => {
             const isFinal =
               distribution.status === "DITERIMA" || distribution.status === "DITOLAK"
             const step = getStep(distribution)
@@ -612,11 +826,20 @@ export function SchoolDistributionsPage() {
                   </dl>
 
                   <div className="mt-3 max-w-sm">
-                    <ProcessTracker step={step} />
+                    <ProcessTracker rejected={distribution.status === "DITOLAK"} step={step} />
                   </div>
                 </div>
 
                 <div className="flex items-start gap-2 md:flex-col">
+                  {!isFinal ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setValidationTarget(distribution)}
+                    >
+                      Validasi
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
                     variant="outline"
@@ -642,7 +865,7 @@ export function SchoolDistributionsPage() {
             )
           })}
 
-          {!isLoading && distributions.length === 0 ? (
+          {!isLoading && visibleDistributions.length === 0 ? (
             <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
               Belum ada makanan masuk untuk divalidasi.
             </div>
@@ -654,32 +877,47 @@ export function SchoolDistributionsPage() {
         distribution={viewTarget}
         open={Boolean(viewTarget)}
         onClose={() => setViewTarget(null)}
-        onConfirmDiterima={(dist, file, note) => {
-          setConfirmDiterimaPending({ distribution: dist, file, note })
+      />
+
+      <ValidationModal
+        distribution={validationTarget}
+        open={Boolean(validationTarget)}
+        onClose={() => setValidationTarget(null)}
+        onConfirmValidation={(dist, status, file, note) => {
+          setConfirmValidationPending({ distribution: dist, file, note, status })
         }}
       />
 
       <AlertDialog
-        open={Boolean(confirmDiterimaPending)}
-        onOpenChange={(open) => !open && setConfirmDiterimaPending(null)}
+        open={Boolean(confirmValidationPending)}
+        onOpenChange={(open) => !open && setConfirmValidationPending(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia>
-              <CheckCircle2Icon />
+              {confirmValidationPending?.status === "DITOLAK" ? <XIcon /> : <CheckCircle2Icon />}
             </AlertDialogMedia>
-            <AlertDialogTitle>Konfirmasi Penerimaan</AlertDialogTitle>
+            <AlertDialogTitle>
+              {confirmValidationPending?.status === "DITOLAK"
+                ? "Tolak penerimaan?"
+                : "Konfirmasi penerimaan?"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Batch {confirmDiterimaPending?.distribution.batch.id} akan ditandai telah diterima dan foto bukti akan diunggah. Tindakan ini tidak dapat dibatalkan.
+              Batch {confirmValidationPending?.distribution.batch.id} akan ditandai{" "}
+              {confirmValidationPending?.status === "DITOLAK"
+                ? "ditolak sekolah."
+                : "telah diterima dan foto bukti akan diunggah."}{" "}
+              Tindakan ini tidak dapat dibatalkan.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isSubmitting}>Batal</AlertDialogCancel>
             <AlertDialogAction
+              variant={confirmValidationPending?.status === "DITOLAK" ? "destructive" : "default"}
               disabled={isSubmitting}
               onClick={(e) => {
                 e.preventDefault()
-                void executeDiterima()
+                void executeValidation()
               }}
             >
               {isSubmitting ? "Menyimpan..." : "Konfirmasi"}

@@ -125,6 +125,45 @@ export function App() {
           path="/student-complaints/history"
           element={<Navigate to="/student-complaints" replace />}
         />
+        <Route
+          path="/history"
+          element={<Navigate to="/history/batches" replace />}
+        />
+        <Route
+          path="/history/batches"
+          element={
+            <RoleRoute>
+              <ComingSoonPage
+                title="Riwayat Batch Makanan"
+                features={["Riwayat batch makanan akan tersedia di sini."]}
+              />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/history/distributions"
+          element={
+            <RoleRoute>
+              <SchoolDistributionsPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/history/school-reports"
+          element={
+            <RoleRoute>
+              <FoodReportsPage mode="history" />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/history/student-complaints"
+          element={
+            <RoleRoute>
+              <StudentComplaintsPage mode="history" />
+            </RoleRoute>
+          }
+        />
         {comingSoonPages.map((page) => (
           <Route
             key={page.path}

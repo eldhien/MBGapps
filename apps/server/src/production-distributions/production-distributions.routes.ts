@@ -37,6 +37,29 @@ function isUuid(value?: string | null) {
   )
 }
 
+let batchStatusEnumReady: Promise<void> | null = null
+
+async function ensureBatchStatusFinalValues() {
+  if (!batchStatusEnumReady) {
+    batchStatusEnumReady = (async () => {
+      await prisma.$executeRawUnsafe(
+        `ALTER TYPE "public"."BatchStatus" ADD VALUE IF NOT EXISTS 'DITERIMA'`
+      )
+      await prisma.$executeRawUnsafe(
+        `ALTER TYPE "public"."BatchStatus" ADD VALUE IF NOT EXISTS 'DITOLAK'`
+      )
+      await prisma.$executeRawUnsafe(
+        `ALTER TYPE "public"."BatchDistributionStatus" ADD VALUE IF NOT EXISTS 'DITOLAK'`
+      )
+    })().catch((error) => {
+      batchStatusEnumReady = null
+      throw error
+    })
+  }
+
+  return batchStatusEnumReady
+}
+
 async function resolveSppgOwnerId(user: {
   id: string
   role: UserRole | string
@@ -92,11 +115,23 @@ async function requireSppgOrSuperAdmin(
 }
 
 function toDistributionResponse(distribution: any) {
+  const schools = distribution.schools.map((item: any) => ({
+    id: item.id,
+    jumlahPorsi: item.jumlahPorsi,
+    status: item.status,
+    receivedAt: item.receivedAt?.toISOString() ?? null,
+    rejectedReason: item.rejectedReason,
+    school: item.school,
+  }))
+  const normalizedStatus = schools.some((item: any) => item.status === "DITOLAK")
+    ? "DITOLAK"
+    : distribution.status
+
   return {
     id: distribution.id,
     batchId: distribution.batchId,
     waktuKirim: distribution.waktuKirim?.toISOString() ?? null,
-    status: distribution.status,
+    status: normalizedStatus,
     createdAt: distribution.createdAt.toISOString(),
     batch: distribution.batch
       ? {
@@ -107,14 +142,7 @@ function toDistributionResponse(distribution: any) {
           driver: distribution.batch.driver,
         }
       : null,
-    schools: distribution.schools.map((item: any) => ({
-      id: item.id,
-      jumlahPorsi: item.jumlahPorsi,
-      status: item.status,
-      receivedAt: item.receivedAt?.toISOString() ?? null,
-      rejectedReason: item.rejectedReason,
-      school: item.school,
-    })),
+    schools,
   }
 }
 
@@ -196,7 +224,12 @@ function toRawDistributionResponses(rows: RawProductionDistribution[]) {
     }
   }
 
-  return [...map.values()]
+  return [...map.values()].map((distribution) => ({
+    ...distribution,
+    status: distribution.schools.some((item: any) => item.status === "DITOLAK")
+      ? "DITOLAK"
+      : distribution.status,
+  }))
 }
 
 async function findProductionDistributionsForUser(user: {
@@ -255,6 +288,19 @@ productionDistributionsRouter.get("/", async (req, res, next) => {
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
     }
+
+    await ensureBatchStatusFinalValues()
+    await prisma.$executeRawUnsafe(`
+      UPDATE "public"."batch_distributions" d
+      SET status = 'DITOLAK'::"public"."BatchDistributionStatus"
+      WHERE d.status = 'BERMASALAH'::"public"."BatchDistributionStatus"
+        AND EXISTS (
+          SELECT 1
+          FROM "public"."batch_distribution_schools" ds
+          WHERE ds.distribution_id = d.id
+            AND ds.status = 'DITOLAK'::"public"."BatchDistributionSchoolStatus"
+        )
+    `)
 
     const distributions = await findProductionDistributionsForUser(auth.currentUser)
 
@@ -793,6 +839,7 @@ schoolDistributionsRouter.get("/", async (req, res, next) => {
 
 schoolDistributionsRouter.patch("/:id/status", upload.single("file"), async (req, res, next) => {
   try {
+    const distributionSchoolId = String(req.params.id)
     const currentUser = await getCurrentUser(req)
 
     if (!currentUser) {
@@ -825,28 +872,30 @@ schoolDistributionsRouter.patch("/:id/status", upload.single("file"), async (req
       return res.status(400).json({ message: "Alasan penolakan wajib diisi." })
     }
 
+    await ensureBatchStatusFinalValues()
+
     let buktiTerimaFotoUrl: string | null = null
+    const file = req.file
 
-    if (status === "DITERIMA") {
-      const file = req.file
-      if (!file) {
-        return res.status(400).json({ message: "Foto Bukti Terima wajib diunggah." })
-      }
-      if (!file.mimetype.startsWith("image/")) {
-        return res.status(400).json({ message: "File harus berupa gambar." })
-      }
-
-      const uploadResult = await uploadImageToCloudinary({
-        file: fileBufferToDataUrl(file),
-        folder: `mbg/distributions/${req.params.id}/school/${schoolId}`,
-      })
-      buktiTerimaFotoUrl = uploadResult.secure_url
+    if (!file) {
+      return res.status(400).json({ message: "Foto validasi wajib diunggah." })
+    }
+    if (!file.mimetype.startsWith("image/")) {
+      return res.status(400).json({ message: "File harus berupa gambar." })
     }
 
+    const uploadResult = await uploadImageToCloudinary({
+      file: fileBufferToDataUrl(file),
+      folder: `mbg/distributions/${distributionSchoolId}/school/${schoolId}`,
+    })
+    buktiTerimaFotoUrl = uploadResult.url
+
     const updated = await prisma.$transaction(async (tx) => {
-      await tx.batchDistributionSchool.updateMany({
+      const txAny = tx as any
+
+      await txAny.batchDistributionSchool.updateMany({
         where: {
-          id: req.params.id,
+          id: distributionSchoolId,
           schoolId,
         },
         data: {
@@ -857,9 +906,9 @@ schoolDistributionsRouter.patch("/:id/status", upload.single("file"), async (req
         },
       })
 
-      const item = await tx.batchDistributionSchool.findFirstOrThrow({
+      const item = await txAny.batchDistributionSchool.findFirstOrThrow({
         where: {
-          id: req.params.id,
+          id: distributionSchoolId,
           schoolId,
         },
         include: {
@@ -878,28 +927,34 @@ schoolDistributionsRouter.patch("/:id/status", upload.single("file"), async (req
         },
       })
 
-      const statuses = item.distribution.schools.map((school) =>
+      const statuses = item.distribution.schools.map((school: any) =>
         school.id === item.id ? status : school.status
       )
       const nextDistributionStatus = statuses.includes("DITOLAK")
-        ? "BERMASALAH"
-        : statuses.every((value) => value === "DITERIMA")
+        ? "DITOLAK"
+        : statuses.every((value: string) => value === "DITERIMA")
           ? "SELESAI"
           : item.distribution.status
 
       if (nextDistributionStatus !== item.distribution.status) {
-        await tx.batchDistribution.update({
+        await txAny.batchDistribution.update({
           where: { id: item.distribution.id },
           data: { status: nextDistributionStatus },
         })
       }
+
+      await tx.$executeRawUnsafe(
+        `UPDATE "batch_produksi" SET "status" = $1::"BatchStatus", "updated_at" = NOW() WHERE "id" = $2`,
+        status === "DITERIMA" ? "DITERIMA" : "DITOLAK",
+        item.distribution.batchId
+      )
 
       await tx.schoolProgress.updateMany({
         where: { schoolId },
         data: { status: status === "DITERIMA" ? "DITERIMA" : "BERMASALAH" },
       })
 
-      return tx.batchDistributionSchool.findUniqueOrThrow({
+      return txAny.batchDistributionSchool.findUniqueOrThrow({
         where: { id: item.id },
         include: {
           distribution: {

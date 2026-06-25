@@ -93,6 +93,8 @@ enum BatchStatus {
   DIPRODUKSI
   SIAP_KIRIM
   TERKIRIM
+  DITERIMA
+  DITOLAK
 }
 
 enum FotoType {
@@ -225,6 +227,7 @@ enum BatchDistributionStatus {
   DIKIRIM
   SELESAI
   BERMASALAH
+  DITOLAK
 }
 
 enum BatchDistributionSchoolStatus {

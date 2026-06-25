@@ -497,7 +497,7 @@ export const api = {
       id: string,
       payload: { rejectedReason?: string; status: "DITERIMA" | "DITOLAK"; file?: File | null }
     ) {
-      if (payload.status === "DITERIMA" && payload.file) {
+      if (payload.file) {
         const formData = new FormData()
         formData.append("status", payload.status)
         formData.append("file", payload.file)

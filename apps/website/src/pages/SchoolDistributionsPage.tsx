@@ -526,7 +526,11 @@ function ValidationModal({
   )
 }
 
-export function SchoolDistributionsPage() {
+export function SchoolDistributionsPage({
+  mode = "validation",
+}: {
+  mode?: "validation" | "history"
+}) {
   const navigate = useNavigate()
   const cachedDistributions = getCachedPageData<SchoolDistribution[]>(
     pageCacheKeys.schoolDistributions
@@ -659,13 +663,22 @@ export function SchoolDistributionsPage() {
       }
       const cachedBatchSummaries = getCachedPageData<any[]>(pageCacheKeys.batches)
       if (cachedBatchSummaries) {
+        const updatedSummary = {
+          id: response.distribution.batch.id,
+          batchIdUnik: response.distribution.batch.id,
+          namaMenu: response.distribution.batch.menu?.name ?? "Menu",
+          waktuProduksi:
+            response.distribution.batch.createdAt ?? new Date().toISOString(),
+          status: response.distribution.batch.status,
+        }
+
         setCachedPageData(
           pageCacheKeys.batches,
-          cachedBatchSummaries.map((batch) =>
-            batch.id === response.distribution.batch.id
-              ? { ...batch, status: response.distribution.batch.status }
-              : batch
-          )
+          cachedBatchSummaries.some((batch) => batch.id === updatedSummary.id)
+            ? cachedBatchSummaries.map((batch) =>
+                batch.id === updatedSummary.id ? { ...batch, ...updatedSummary } : batch
+              )
+            : [updatedSummary, ...cachedBatchSummaries]
         )
       }
       const cachedDistributions = getCachedPageData<any[]>(
@@ -707,7 +720,12 @@ export function SchoolDistributionsPage() {
     }
   }
 
+  const isHistoryPage = mode === "history"
   const visibleDistributions = distributions.filter((distribution) => {
+    if (isHistoryPage) {
+      return distribution.status === "DITERIMA" || distribution.status === "DITOLAK"
+    }
+
     if (distribution.status !== "DITERIMA" && distribution.status !== "DITOLAK") {
       return true
     }
@@ -720,7 +738,7 @@ export function SchoolDistributionsPage() {
   ).length
 
   return (
-    <DashboardShell title="Validasi Penerimaan">
+    <DashboardShell title={isHistoryPage ? "Riwayat Distribusi" : "Validasi Penerimaan"}>
       {success ? (
         <AlertToast title="Berhasil" description={success} onClose={() => setSuccess(null)} />
       ) : null}
@@ -736,12 +754,16 @@ export function SchoolDistributionsPage() {
       <section className="pb-1">
         <div className="space-y-2">
           <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Sekolah
+            {isHistoryPage ? "Riwayat" : "Sekolah"}
           </p>
-          <h1 className="text-2xl font-semibold tracking-tight">Validasi Penerimaan</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {isHistoryPage ? "Riwayat Distribusi" : "Validasi Penerimaan"}
+          </h1>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Pantau progres pengiriman batch makanan dan konfirmasi penerimaan di sekolah Anda.
-            {pendingCount > 0 && (
+            {isHistoryPage
+              ? "Lihat distribusi makanan yang sudah selesai divalidasi sekolah."
+              : "Pantau progres pengiriman batch makanan dan konfirmasi penerimaan di sekolah Anda."}
+            {!isHistoryPage && pendingCount > 0 && (
               <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
                 {pendingCount} menunggu konfirmasi
               </span>
@@ -752,9 +774,13 @@ export function SchoolDistributionsPage() {
 
       <section className="rounded-lg border bg-card text-card-foreground">
         <div className="border-b p-4">
-          <h2 className="text-lg font-semibold">Makanan Masuk</h2>
+          <h2 className="text-lg font-semibold">
+            {isHistoryPage ? "Distribusi Tervalidasi" : "Makanan Masuk"}
+          </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Klik "Validasi" untuk mengunggah foto, memberi catatan, dan menyelesaikan penerimaan.
+            {isHistoryPage
+              ? "Distribusi baru masuk ke riwayat setelah sekolah menekan Selesai atau Ditolak."
+              : 'Klik "Validasi" untuk mengunggah foto, memberi catatan, dan menyelesaikan penerimaan.'}
           </p>
         </div>
 
@@ -831,7 +857,7 @@ export function SchoolDistributionsPage() {
                 </div>
 
                 <div className="flex items-start gap-2 md:flex-col">
-                  {!isFinal ? (
+                  {!isHistoryPage && !isFinal ? (
                     <Button
                       type="button"
                       size="sm"
@@ -867,7 +893,9 @@ export function SchoolDistributionsPage() {
 
           {!isLoading && visibleDistributions.length === 0 ? (
             <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
-              Belum ada makanan masuk untuk divalidasi.
+              {isHistoryPage
+                ? "Belum ada distribusi yang sudah divalidasi."
+                : "Belum ada makanan masuk untuk divalidasi."}
             </div>
           ) : null}
         </div>

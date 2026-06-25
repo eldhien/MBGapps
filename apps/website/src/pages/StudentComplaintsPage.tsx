@@ -8,7 +8,8 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { BatchSummary, DashboardAnalytics, StudentComplaint } from "@/lib/api"
+import { useAuth } from "@/features/auth/AuthProvider"
+import type { BatchSummary, DashboardAnalytics, SchoolAccount, StudentComplaint } from "@/lib/api"
 import { api } from "@/lib/api"
 import {
   getCachedPageData,
@@ -72,6 +73,7 @@ export function StudentComplaintsPage({
 }: {
   mode?: "create" | "history"
 }) {
+  const { profile } = useAuth()
   const cachedComplaints = getCachedPageData<StudentComplaint[]>(
     pageCacheKeys.studentComplaints
   )
@@ -80,6 +82,9 @@ export function StudentComplaintsPage({
     cachedComplaints ?? []
   )
   const [batches, setBatches] = useState<BatchSummary[]>(cachedBatches ?? [])
+  const [schools, setSchools] = useState<SchoolAccount[]>(() =>
+    getCachedPageData<SchoolAccount[]>(pageCacheKeys.schoolAccounts) ?? []
+  )
   const [loading, setLoading] = useState(!cachedComplaints)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
@@ -116,9 +121,12 @@ export function StudentComplaintsPage({
     setError(null)
 
     try {
-      const [complaintsResponse, batchesResponse] = await Promise.allSettled([
+      const [complaintsResponse, batchesResponse, schoolsResponse] = await Promise.allSettled([
         api.studentComplaints.list(),
         api.batches.list(),
+        profile?.role === "SEKOLAH"
+          ? Promise.resolve({ schools: [] as SchoolAccount[] })
+          : api.schoolAccounts.list(),
       ])
 
       if (complaintsResponse.status === "fulfilled") {
@@ -138,6 +146,12 @@ export function StudentComplaintsPage({
         )
       } else {
         setBatches([])
+      }
+
+      if (schoolsResponse.status === "fulfilled" && schoolsResponse.value.schools.length) {
+        setSchools(
+          setCachedPageData(pageCacheKeys.schoolAccounts, schoolsResponse.value.schools)
+        )
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan.")
@@ -205,7 +219,27 @@ export function StudentComplaintsPage({
   }
 
   const isCreatePage = mode === "create"
+  const showSchoolReporter = profile?.role !== "SEKOLAH"
   const pageTitle = isCreatePage ? "Buat Keluhan Siswa" : "Riwayat Keluhan"
+  const historyGridClass = showSchoolReporter
+    ? "md:grid-cols-[0.9fr_0.8fr_0.55fr_1.2fr_1.2fr_0.7fr]"
+    : "md:grid-cols-[0.9fr_0.55fr_1.2fr_1.2fr_0.7fr]"
+  const reporterNameById = new Map(
+    schools.flatMap((school) => [
+      [school.id, school.account?.username ?? school.name] as const,
+      ...(school.account?.id
+        ? [[school.account.id, school.account.username] as const]
+        : []),
+    ])
+  )
+
+  function getReporterName(complaint: StudentComplaint) {
+    return (
+      reporterNameById.get(complaint.sekolahId) ??
+      complaint.sekolahUsername ??
+      "Sekolah tidak diketahui"
+    )
+  }
 
   return (
     <DashboardShell title={pageTitle}>
@@ -393,9 +427,10 @@ export function StudentComplaintsPage({
                 {Array.from({ length: 3 }).map((_, index) => (
                   <div
                     key={index}
-                    className="grid gap-3 border-b p-4 last:border-0 md:grid-cols-[0.9fr_0.55fr_1.2fr_1.2fr_0.7fr]"
+                    className={`grid gap-3 border-b p-4 last:border-0 ${historyGridClass}`}
                   >
                     <Skeleton className="h-5 w-32" />
+                    {showSchoolReporter ? <Skeleton className="h-5 w-32" /> : null}
                     <Skeleton className="h-5 w-16" />
                     <Skeleton className="h-5 w-full" />
                     <Skeleton className="h-5 w-full" />
@@ -413,8 +448,9 @@ export function StudentComplaintsPage({
 
             {!loading && complaints.length > 0 ? (
               <div className="overflow-hidden rounded-xl border">
-                <div className="hidden grid-cols-[0.9fr_0.55fr_1.2fr_1.2fr_0.7fr] gap-3 border-b bg-muted/40 px-4 py-3 text-xs font-semibold text-muted-foreground md:grid">
+                <div className={`hidden gap-3 border-b bg-muted/40 px-4 py-3 text-xs font-semibold text-muted-foreground md:grid ${historyGridClass}`}>
                   <span>Waktu</span>
+                  {showSchoolReporter ? <span>Sekolah Pelapor</span> : null}
                   <span>Siswa</span>
                   <span>Gejala</span>
                   <span>Tindakan</span>
@@ -423,7 +459,7 @@ export function StudentComplaintsPage({
                 {complaints.map((complaint) => (
                   <div
                     key={complaint.id}
-                    className="grid gap-3 border-b p-4 last:border-0 md:grid-cols-[0.9fr_0.55fr_1.2fr_1.2fr_0.7fr] md:items-center"
+                    className={`grid gap-3 border-b p-4 last:border-0 md:items-center ${historyGridClass}`}
                   >
                     <div>
                       <p className="text-sm font-medium">
@@ -437,6 +473,11 @@ export function StudentComplaintsPage({
                         )}
                       </p>
                     </div>
+                    {showSchoolReporter ? (
+                      <span className="text-sm font-medium">
+                        {getReporterName(complaint)}
+                      </span>
+                    ) : null}
                     <span className="inline-flex w-fit rounded-full border bg-rose-500/10 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300">
                       {complaint.jumlahSiswa}
                     </span>

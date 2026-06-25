@@ -24,6 +24,7 @@ export type ManagedUser = {
 export type BatchSummary = {
   id: string
   batchIdUnik: string
+  jumlahPorsi?: number
   namaMenu: string
   waktuProduksi: string
   status: string
@@ -53,6 +54,7 @@ export type FoodReport = {
   kategoriLainnya: string | null
   deskripsi: string
   sekolahId: string
+  sekolahUsername?: string
   batchId: string | null
   status: FoodReportStatus
   createdAt: string
@@ -66,6 +68,7 @@ export type StudentComplaint = {
   waktuKejadian: string
   tindakan: string
   sekolahId: string
+  sekolahUsername?: string
   batchId: string | null
   createdAt: string
   updatedAt: string

@@ -62,6 +62,15 @@ function getDistributionStatus(distribution: ProductionDistribution) {
     : distribution.status
 }
 
+function isDistributionValidated(distribution: ProductionDistribution) {
+  return (
+    distribution.schools.length > 0 &&
+    distribution.schools.every((item) =>
+      item.status === "DITERIMA" || item.status === "DITOLAK"
+    )
+  )
+}
+
 export function DistributionPage({ mode = "create" }: { mode?: "create" | "history" }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -125,6 +134,10 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
         (batch) => batch.status === "DIPRODUKSI" || batch.id === editBatchId
       ),
     [batches, editBatchId]
+  )
+  const historyDistributions = useMemo(
+    () => distributions.filter(isDistributionValidated),
+    [distributions]
   )
 
   async function fetchLatestData(showLoading: boolean) {
@@ -653,7 +666,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                     </tr>
                   ))
                 : null}
-              {distributions.map((distribution) => (
+              {historyDistributions.map((distribution) => (
                 <tr key={distribution.id} className="border-b last:border-0">
                   <td className="px-4 py-3 font-medium">
                     {distribution.batchId}
@@ -703,13 +716,13 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                   </td>
                 </tr>
               ))}
-              {!isLoading && distributions.length === 0 ? (
+              {!isLoading && historyDistributions.length === 0 ? (
                 <tr>
                   <td
                     colSpan={6}
                     className="px-4 py-8 text-center text-muted-foreground"
                   >
-                    Belum ada distribusi.
+                    Belum ada distribusi yang sudah divalidasi sekolah.
                   </td>
                 </tr>
               ) : null}

@@ -14,6 +14,7 @@ import { SchoolDistributionsPage } from "@/pages/SchoolDistributionsPage"
 import { StudentComplaintsPage } from "@/pages/StudentComplaintsPage"
 import { SchoolAccountsPage } from "@/pages/SchoolAccountsPage"
 import { UsersPage } from "@/pages/UsersPage"
+import { BatchHistoryPage } from "@/pages/BatchHistoryPage"
 import { BatchListPage } from "@/pages/batch/BatchListPage"
 import { BatchCreatePage } from "@/pages/batch/BatchCreatePage"
 
@@ -33,6 +34,7 @@ const implementedPaths = new Set([
   "/cleanliness-reports/history",
   "/food-reports",
   "/student-complaints",
+  "/history/batches",
   "/reports/school-reports",
   "/reports/student-complaints",
   "/reports/export-pdf",
@@ -130,10 +132,7 @@ export function App() {
           path="/history/batches"
           element={
             <RoleRoute>
-              <ComingSoonPage
-                title="Riwayat Batch Makanan"
-                features={["Riwayat batch makanan akan tersedia di sini."]}
-              />
+              <BatchHistoryPage />
             </RoleRoute>
           }
         />
@@ -141,7 +140,7 @@ export function App() {
           path="/history/distributions"
           element={
             <RoleRoute>
-              <SchoolDistributionsPage />
+              <SchoolDistributionsPage mode="history" />
             </RoleRoute>
           }
         />
@@ -240,10 +239,7 @@ export function App() {
           path="/reports/school-reports"
           element={
             <RoleRoute>
-              <ComingSoonPage
-                title="Riwayat Laporan Sekolah"
-                features={["Riwayat laporan sekolah akan tersedia di sini."]}
-              />
+              <FoodReportsPage mode="history" />
             </RoleRoute>
           }
         />
@@ -251,10 +247,7 @@ export function App() {
           path="/reports/student-complaints"
           element={
             <RoleRoute>
-              <ComingSoonPage
-                title="Riwayat Keluhan Siswa"
-                features={["Riwayat keluhan siswa akan tersedia di sini."]}
-              />
+              <StudentComplaintsPage mode="history" />
             </RoleRoute>
           }
         />

@@ -32,12 +32,15 @@ import {
   CameraIcon,
   CheckCircle2Icon,
   EyeIcon,
+  ImageIcon,
   ImageUpIcon,
   PencilIcon,
   ShieldCheckIcon,
   TriangleAlertIcon,
   Trash2Icon,
   UploadIcon,
+  XIcon,
+  ZoomInIcon,
 } from "lucide-react"
 import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react"
 import { createPortal } from "react-dom"
@@ -176,6 +179,109 @@ async function uploadChecklistPhoto(field: PhotoField, file: File) {
     sizeLabel: processed.sizeLabel,
     url: upload.data.url,
   }
+}
+
+function PhotoThumb({
+  label,
+  onZoom,
+  url,
+}: {
+  label: string
+  onZoom: (url: string) => void
+  url: string | null | undefined
+}) {
+  if (!url) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <div className="flex h-20 w-full items-center justify-center rounded-lg border border-dashed bg-muted/30 text-muted-foreground/50">
+          <ImageIcon className="h-5 w-5" />
+        </div>
+        <p className="truncate text-center text-xs text-muted-foreground">
+          {label}
+        </p>
+        <p className="text-center text-xs italic text-muted-foreground/60">
+          Belum ada
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => onZoom(url)}
+        className="group relative h-20 w-full overflow-hidden rounded-lg border bg-muted/20"
+      >
+        <img
+          src={url}
+          alt={label}
+          className="h-full w-full object-cover transition group-hover:scale-105 group-hover:opacity-90"
+        />
+        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/20">
+          <ZoomInIcon className="h-5 w-5 text-white opacity-0 transition group-hover:opacity-100" />
+        </div>
+      </button>
+      <p className="truncate text-center text-xs text-muted-foreground">
+        {label}
+      </p>
+    </div>
+  )
+}
+
+function PhotoLightbox({
+  label,
+  onClose,
+  url,
+}: {
+  label: string
+  onClose: () => void
+  url: string
+}) {
+  function closePreview(event: React.SyntheticEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    onClose()
+  }
+
+  function keepPreviewOpen(event: React.SyntheticEvent) {
+    event.stopPropagation()
+  }
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose()
+    }
+
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose])
+
+  return createPortal(
+    <div
+      className="pointer-events-auto fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4"
+      onClick={closePreview}
+      onPointerDown={closePreview}
+    >
+      <button
+        type="button"
+        onClick={closePreview}
+        onPointerDown={closePreview}
+        className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
+        aria-label="Tutup"
+      >
+        <XIcon className="h-5 w-5" />
+      </button>
+      <img
+        src={url}
+        alt={label}
+        className="max-h-[92vh] max-w-[95vw] rounded-xl object-contain shadow-2xl"
+        onClick={keepPreviewOpen}
+        onPointerDown={keepPreviewOpen}
+      />
+    </div>,
+    document.body
+  )
 }
 
 export function KitchenChecklistPage({
@@ -934,6 +1040,7 @@ export function KitchenChecklistPage({
                 </Button>
                 <Button
                   disabled={editSubmitting || Boolean(editProcessingField)}
+                  pending={editSubmitting}
                   type="submit"
                 >
                   {editSubmitting
@@ -969,23 +1076,12 @@ export function KitchenChecklistPage({
                   { label: "Alat", value: viewTarget.alatPhoto },
                   { label: "Kebersihan", value: viewTarget.kebersihanPhoto },
                 ].map((photo) => (
-                  <button
-                    type="button"
+                  <PhotoThumb
                     key={photo.label}
-                    className="overflow-hidden rounded-xl border bg-muted/30 text-left transition hover:bg-muted/50"
-                    onClick={() => setZoomPhoto({ label: photo.label, url: photo.value })}
-                  >
-                    <div className="h-20 w-full overflow-hidden">
-                      <img
-                        src={photo.value}
-                        alt={photo.label}
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                    <div className="border-t bg-background px-3 py-2 text-xs font-semibold text-muted-foreground">
-                      {photo.label} · Klik untuk zoom
-                    </div>
-                  </button>
+                    label={photo.label}
+                    url={photo.value}
+                    onZoom={(url) => setZoomPhoto({ label: photo.label, url })}
+                  />
                 ))}
               </div>
               <div className="rounded-xl border bg-muted/20 p-4">
@@ -1000,7 +1096,15 @@ export function KitchenChecklistPage({
         </DialogContent>
       </Dialog>
 
-      {zoomPhoto ? createPortal(
+      {zoomPhoto ? (
+        <PhotoLightbox
+          label={zoomPhoto.label}
+          url={zoomPhoto.url}
+          onClose={() => setZoomPhoto(null)}
+        />
+      ) : null}
+
+      {false && zoomPhoto ? createPortal(
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm pointer-events-auto"
           onPointerDown={(event) => event.stopPropagation()}

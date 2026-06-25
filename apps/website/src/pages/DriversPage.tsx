@@ -53,6 +53,7 @@ export function DriversPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(!cachedDrivers)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDeletingDriver, setIsDeletingDriver] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Driver | null>(null)
 
   const sortedDrivers = useMemo(
@@ -173,9 +174,10 @@ export function DriversPage() {
   }
 
   async function deleteDriver() {
-    if (!deleteTarget) return
+    if (!deleteTarget || isDeletingDriver) return
     setError(null)
     setSuccess(null)
+    setIsDeletingDriver(true)
 
     try {
       await api.drivers.delete(deleteTarget.id)
@@ -189,6 +191,8 @@ export function DriversPage() {
       setSuccess("Driver berhasil dihapus.")
     } catch (error) {
       setError(error instanceof Error ? error.message : "Gagal menghapus driver.")
+    } finally {
+      setIsDeletingDriver(false)
     }
   }
 
@@ -387,13 +391,21 @@ export function DriversPage() {
               >
                 Batal
               </Button>
-              <Button type="submit" pending={isSubmitting} disabled={isSubmitting}>{form.id ? "Simpan" : "Tambah"}</Button>
+              <Button type="submit" pending={isSubmitting} disabled={isSubmitting}>
+                {isSubmitting
+                  ? form.id
+                    ? "Menyimpan..."
+                    : "Menambah..."
+                  : form.id
+                  ? "Simpan"
+                  : "Tambah"}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && !isDeletingDriver && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia>
@@ -405,15 +417,16 @@ export function DriversPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletingDriver}>Batal</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
+              disabled={isDeletingDriver}
               onClick={(event) => {
                 event.preventDefault()
                 void deleteDriver()
               }}
             >
-              Hapus
+              {isDeletingDriver ? "Menghapus..." : "Hapus"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

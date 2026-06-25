@@ -67,6 +67,7 @@ export function UsersPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(!cachedUsers)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDeletingUser, setIsDeletingUser] = useState(false)
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [users, setUsers] = useState<ManagedUser[]>(() => cachedUsers ?? [])
 
@@ -182,10 +183,11 @@ export function UsersPage() {
   }
 
   async function onDelete() {
-    if (!deleteTarget) return
+    if (!deleteTarget || isDeletingUser) return
 
     setAlertMessage(null)
     setError(null)
+    setIsDeletingUser(true)
 
     try {
       await api.users.delete(deleteTarget.id)
@@ -201,6 +203,8 @@ export function UsersPage() {
       setError(
         error instanceof Error ? error.message : "Gagal menghapus pengguna."
       )
+    } finally {
+      setIsDeletingUser(false)
     }
   }
 
@@ -436,7 +440,13 @@ export function UsersPage() {
               </Button>
               <Button type="submit" pending={isSubmitting} disabled={isSubmitting}>
                 {isEditing ? <PencilIcon /> : <PlusIcon />}
-                {isEditing ? "Simpan" : "Tambah"}
+                {isSubmitting
+                  ? isEditing
+                    ? "Menyimpan..."
+                    : "Menambah..."
+                  : isEditing
+                  ? "Simpan"
+                  : "Tambah"}
               </Button>
             </DialogFooter>
           </form>
@@ -446,7 +456,7 @@ export function UsersPage() {
       <AlertDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null)
+          if (!open && !isDeletingUser) setDeleteTarget(null)
         }}
       >
         <AlertDialogContent>
@@ -461,9 +471,16 @@ export function UsersPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={onDelete}>
-              Hapus
+            <AlertDialogCancel disabled={isDeletingUser}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isDeletingUser}
+              onClick={(event) => {
+                event.preventDefault()
+                void onDelete()
+              }}
+            >
+              {isDeletingUser ? "Menghapus..." : "Hapus"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

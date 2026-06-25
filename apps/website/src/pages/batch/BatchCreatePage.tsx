@@ -105,7 +105,9 @@ export function BatchCreatePage() {
         ])
       }
 
-      navigate("/batch")
+      navigate("/batch", {
+        state: { success: "Batch berhasil disimpan." },
+      })
     } catch (err: any) {
       setError(err.message || "Gagal membuat batch")
     } finally {

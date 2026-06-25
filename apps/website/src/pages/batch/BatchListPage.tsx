@@ -29,10 +29,21 @@ import {
   subscribePageCache,
 } from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
-import { CheckCircle2Icon, EyeIcon, PencilIcon, PlusIcon, Trash2Icon, TruckIcon, TriangleAlertIcon } from "lucide-react"
+import {
+  CheckCircle2Icon,
+  EyeIcon,
+  ImageIcon,
+  PencilIcon,
+  PlusIcon,
+  Trash2Icon,
+  TruckIcon,
+  TriangleAlertIcon,
+  XIcon,
+  ZoomInIcon,
+} from "lucide-react"
 import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 
 type KomposisiItem = {
   namaBahan: string
@@ -68,17 +79,123 @@ function getLatestFoodPhotoUrl(batch: any) {
   return getBatchFoodPhotos(batch)[0]?.url ?? null
 }
 
+function PhotoThumb({
+  label,
+  onZoom,
+  url,
+}: {
+  label: string
+  onZoom: (url: string) => void
+  url: string | null | undefined
+}) {
+  if (!url) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <div className="flex h-20 w-full items-center justify-center rounded-lg border border-dashed bg-muted/30 text-muted-foreground/50">
+          <ImageIcon className="h-5 w-5" />
+        </div>
+        <p className="truncate text-center text-xs text-muted-foreground">
+          {label}
+        </p>
+        <p className="text-center text-xs italic text-muted-foreground/60">
+          Belum ada
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <button
+        type="button"
+        onClick={() => onZoom(url)}
+        className="group relative h-20 w-full overflow-hidden rounded-lg border bg-muted/20"
+      >
+        <img
+          src={url}
+          alt={label}
+          className="h-full w-full object-cover transition group-hover:scale-105 group-hover:opacity-90"
+        />
+        <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/20">
+          <ZoomInIcon className="h-5 w-5 text-white opacity-0 transition group-hover:opacity-100" />
+        </div>
+      </button>
+      <p className="truncate text-center text-xs text-muted-foreground">
+        {label}
+      </p>
+    </div>
+  )
+}
+
+function PhotoLightbox({
+  onClose,
+  url,
+}: {
+  onClose: () => void
+  url: string
+}) {
+  function closePreview(event: React.SyntheticEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    onClose()
+  }
+
+  function keepPreviewOpen(event: React.SyntheticEvent) {
+    event.stopPropagation()
+  }
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose()
+    }
+
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [onClose])
+
+  return createPortal(
+    <div
+      className="pointer-events-auto fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4"
+      onClick={closePreview}
+      onPointerDown={closePreview}
+    >
+      <button
+        type="button"
+        onClick={closePreview}
+        onPointerDown={closePreview}
+        className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
+        aria-label="Tutup"
+      >
+        <XIcon className="h-5 w-5" />
+      </button>
+      <img
+        src={url}
+        alt="Preview foto"
+        className="max-h-[92vh] max-w-[95vw] rounded-xl object-contain shadow-2xl"
+        onClick={keepPreviewOpen}
+        onPointerDown={keepPreviewOpen}
+      />
+    </div>,
+    document.body
+  )
+}
+
 export function BatchListPage({
   mode = "production",
 }: {
   mode?: "production" | "distribution"
 }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const cachedBatches = getCachedPageData<any[]>(pageCacheKeys.productionBatches)
   const [batches, setBatches] = useState<any[]>(() => cachedBatches ?? [])
   const [isLoading, setIsLoading] = useState(!cachedBatches)
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(
+    () => (location.state as { success?: string } | null)?.success ?? null
+  )
   const [isSavingEdit, setIsSavingEdit] = useState(false)
+  const [isDeletingBatch, setIsDeletingBatch] = useState(false)
   const [viewTarget, setViewTarget] = useState<any>(null)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [editTarget, setEditTarget] = useState<any>(null)
@@ -118,6 +235,15 @@ export function BatchListPage({
   }, [])
 
   useEffect(() => {
+    const routeSuccess = (location.state as { success?: string } | null)
+      ?.success
+    if (routeSuccess) {
+      setSuccess(routeSuccess)
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location.pathname, location.state, navigate])
+
+  useEffect(() => {
     if (!editFotoMakanan) {
       setEditFotoPreview(null)
       return
@@ -130,7 +256,9 @@ export function BatchListPage({
   }, [editFotoMakanan])
 
   async function deleteBatch() {
-    if (!deleteTarget) return
+    if (!deleteTarget || isDeletingBatch) return
+    setIsDeletingBatch(true)
+    setError(null)
     try {
       await api.productionBatches.delete(deleteTarget.id)
       setBatches((current) =>
@@ -140,8 +268,11 @@ export function BatchListPage({
         )
       )
       setDeleteTarget(null)
+      setSuccess("Batch berhasil dihapus.")
     } catch (err: any) {
       setError(err.message || "Gagal menghapus batch")
+    } finally {
+      setIsDeletingBatch(false)
     }
   }
 
@@ -218,6 +349,7 @@ export function BatchListPage({
       setEditTarget(null)
       setEditFotoMakanan(null)
       setEditFotoPreview(null)
+      setSuccess("Batch berhasil diperbarui.")
     } catch (err: any) {
       setError(err.message || "Gagal mengedit batch")
     } finally {
@@ -266,6 +398,13 @@ export function BatchListPage({
           description={error}
           variant="destructive"
           onClose={() => setError(null)}
+        />
+      )}
+      {success && (
+        <AlertToast
+          title="Berhasil"
+          description={success}
+          onClose={() => setSuccess(null)}
         />
       )}
 
@@ -416,26 +555,11 @@ export function BatchListPage({
               </div>
               <div className="grid gap-2">
                 <p className="text-sm font-medium">Foto makanan</p>
-                {getLatestFoodPhotoUrl(viewTarget) ? (
-                  <button
-                    type="button"
-                    className="group w-full overflow-hidden rounded-xl border bg-muted/20 text-left"
-                    onClick={() => setZoomFotoUrl(getLatestFoodPhotoUrl(viewTarget))}
-                  >
-                    <img
-                      src={getLatestFoodPhotoUrl(viewTarget)}
-                      alt={`Foto makanan batch ${viewTarget.id}`}
-                      className="h-20 w-full object-cover transition group-hover:opacity-90"
-                    />
-                    <span className="block border-t px-2 py-1 text-xs text-muted-foreground">
-                      Klik untuk zoom
-                    </span>
-                  </button>
-                ) : (
-                  <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
-                    Belum ada foto makanan.
-                  </div>
-                )}
+                <PhotoThumb
+                  label="Makanan Jadi"
+                  url={getLatestFoodPhotoUrl(viewTarget)}
+                  onZoom={setZoomFotoUrl}
+                />
               </div>
               <dl className="grid gap-3 text-sm">
                 <div className="flex justify-between gap-4">
@@ -678,13 +802,19 @@ export function BatchListPage({
               <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>
                 Batal
               </Button>
-              <Button type="submit" pending={isSavingEdit} disabled={isSavingEdit}>Simpan</Button>
+              <Button type="submit" pending={isSavingEdit} disabled={isSavingEdit}>
+                {isSavingEdit ? "Menyimpan..." : "Simpan"}
+              </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      {zoomFotoUrl ? createPortal(
+      {zoomFotoUrl ? (
+        <PhotoLightbox url={zoomFotoUrl} onClose={() => setZoomFotoUrl(null)} />
+      ) : null}
+
+      {false && zoomFotoUrl ? createPortal(
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm pointer-events-auto"
           onPointerDown={(event) => event.stopPropagation()}
@@ -714,7 +844,7 @@ export function BatchListPage({
         document.body
       ) : null}
 
-      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && !isDeletingBatch && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia>
@@ -726,15 +856,16 @@ export function BatchListPage({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletingBatch}>Batal</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
+              disabled={isDeletingBatch}
               onClick={(event) => {
                 event.preventDefault()
                 void deleteBatch()
               }}
             >
-              Hapus
+              {isDeletingBatch ? "Menghapus..." : "Hapus"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

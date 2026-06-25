@@ -7,7 +7,7 @@ import {
   Trash2Icon,
   TriangleAlertIcon,
 } from "lucide-react"
-import { useNavigate, useSearchParams } from "react-router-dom"
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom"
 
 import { AlertToast } from "@/components/ui/alert-toast"
 import {
@@ -64,6 +64,7 @@ function getDistributionStatus(distribution: ProductionDistribution) {
 
 export function DistributionPage({ mode = "create" }: { mode?: "create" | "history" }) {
   const navigate = useNavigate()
+  const location = useLocation()
   const [searchParams] = useSearchParams()
   const selectedBatchIdFromQuery = searchParams.get("batchId") ?? ""
   const cachedBatches = getCachedPageData<any[]>(pageCacheKeys.productionBatches)
@@ -90,7 +91,10 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
   )
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSavingEdit, setIsSavingEdit] = useState(false)
-  const [success, setSuccess] = useState<string | null>(null)
+  const [isDeletingDistribution, setIsDeletingDistribution] = useState(false)
+  const [success, setSuccess] = useState<string | null>(
+    () => (location.state as { success?: string } | null)?.success ?? null
+  )
   const [viewTarget, setViewTarget] = useState<ProductionDistribution | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ProductionDistribution | null>(null)
   const [editTarget, setEditTarget] = useState<ProductionDistribution | null>(null)
@@ -180,6 +184,15 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
   useEffect(() => {
     void loadData()
   }, [])
+
+  useEffect(() => {
+    const routeSuccess = (location.state as { success?: string } | null)
+      ?.success
+    if (routeSuccess) {
+      setSuccess(routeSuccess)
+      navigate(location.pathname, { replace: true, state: null })
+    }
+  }, [location.pathname, location.state, navigate])
 
   useEffect(() => {
     const unsubscribeDistributions = subscribePageCache<ProductionDistribution[]>(
@@ -312,11 +325,16 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
       })
 
       setBatchId("")
-      navigate("/distribution", { replace: true })
       setDriverId("")
       setSchoolRows([{ jumlahPorsi: "", schoolId: "" }])
       setWaktuKirim(getCurrentDateTimeLocal())
-      setSuccess("Distribusi berhasil dibuat dan tampil di akun sekolah terkait.")
+      navigate("/distribution/history", {
+        replace: true,
+        state: {
+          success:
+            "Distribusi berhasil dibuat dan tampil di akun sekolah terkait.",
+        },
+      })
     } catch (error) {
       setError(
         error instanceof Error ? error.message : "Gagal membuat distribusi."
@@ -387,8 +405,11 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
   }
 
   async function deleteDistribution() {
-    if (!deleteTarget) return
+    if (!deleteTarget || isDeletingDistribution) return
 
+    setIsDeletingDistribution(true)
+    setError(null)
+    setSuccess(null)
     try {
       await api.productionDistributions.delete(deleteTarget.id)
       setDistributions((current) =>
@@ -409,6 +430,8 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
       setSuccess("Distribusi berhasil dihapus.")
     } catch (error) {
       setError(error instanceof Error ? error.message : "Gagal menghapus distribusi.")
+    } finally {
+      setIsDeletingDistribution(false)
     }
   }
 
@@ -876,13 +899,15 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
               <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>
                 Batal
               </Button>
-              <Button type="submit" pending={isSavingEdit} disabled={isSavingEdit}>Simpan</Button>
+              <Button type="submit" pending={isSavingEdit} disabled={isSavingEdit}>
+                {isSavingEdit ? "Menyimpan..." : "Simpan"}
+              </Button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && !isDeletingDistribution && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia>
@@ -894,15 +919,16 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletingDistribution}>Batal</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
+              disabled={isDeletingDistribution}
               onClick={(event) => {
                 event.preventDefault()
                 void deleteDistribution()
               }}
             >
-              Hapus
+              {isDeletingDistribution ? "Menghapus..." : "Hapus"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -234,6 +234,28 @@ export const navigationPages: NavigationPage[] = [
       "Riwayat batch makanan dan distribusi.",
       "Riwayat laporan sekolah dan keluhan siswa.",
     ],
+    children: [
+      {
+        title: "Riwayat Batch Makanan",
+        path: "/history/batches",
+        icon: <FileTextIcon />,
+      },
+      {
+        title: "Riwayat Distribusi",
+        path: "/history/distributions",
+        icon: <HistoryIcon />,
+      },
+      {
+        title: "Riwayat Laporan Sekolah",
+        path: "/history/school-reports",
+        icon: <FileTextIcon />,
+      },
+      {
+        title: "Riwayat Keluhan Siswa",
+        path: "/history/student-complaints",
+        icon: <HistoryIcon />,
+      },
+    ],
   },
 ]
 

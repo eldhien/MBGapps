@@ -14,6 +14,7 @@ import { SchoolDistributionsPage } from "@/pages/SchoolDistributionsPage"
 import { StudentComplaintsPage } from "@/pages/StudentComplaintsPage"
 import { SchoolAccountsPage } from "@/pages/SchoolAccountsPage"
 import { UsersPage } from "@/pages/UsersPage"
+import { BatchHistoryPage } from "@/pages/BatchHistoryPage"
 import { BatchListPage } from "@/pages/batch/BatchListPage"
 import { BatchCreatePage } from "@/pages/batch/BatchCreatePage"
 
@@ -33,6 +34,7 @@ const implementedPaths = new Set([
   "/cleanliness-reports/history",
   "/food-reports",
   "/student-complaints",
+  "/history/batches",
   "/reports/school-reports",
   "/reports/student-complaints",
   "/reports/export-pdf",
@@ -122,6 +124,42 @@ export function App() {
           path="/student-complaints/history"
           element={<Navigate to="/student-complaints" replace />}
         />
+        <Route
+          path="/history"
+          element={<Navigate to="/history/batches" replace />}
+        />
+        <Route
+          path="/history/batches"
+          element={
+            <RoleRoute>
+              <BatchHistoryPage />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/history/distributions"
+          element={
+            <RoleRoute>
+              <SchoolDistributionsPage mode="history" />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/history/school-reports"
+          element={
+            <RoleRoute>
+              <FoodReportsPage mode="history" />
+            </RoleRoute>
+          }
+        />
+        <Route
+          path="/history/student-complaints"
+          element={
+            <RoleRoute>
+              <StudentComplaintsPage mode="history" />
+            </RoleRoute>
+          }
+        />
         {comingSoonPages.map((page) => (
           <Route
             key={page.path}
@@ -201,10 +239,7 @@ export function App() {
           path="/reports/school-reports"
           element={
             <RoleRoute>
-              <ComingSoonPage
-                title="Riwayat Laporan Sekolah"
-                features={["Riwayat laporan sekolah akan tersedia di sini."]}
-              />
+              <FoodReportsPage mode="history" />
             </RoleRoute>
           }
         />
@@ -212,10 +247,7 @@ export function App() {
           path="/reports/student-complaints"
           element={
             <RoleRoute>
-              <ComingSoonPage
-                title="Riwayat Keluhan Siswa"
-                features={["Riwayat keluhan siswa akan tersedia di sini."]}
-              />
+              <StudentComplaintsPage mode="history" />
             </RoleRoute>
           }
         />

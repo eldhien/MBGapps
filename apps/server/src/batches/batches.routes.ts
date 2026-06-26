@@ -79,6 +79,9 @@ batchesRouter.get("/", async (req, res, next) => {
     }
 
     const batches = await prisma.batchProduksi.findMany({
+      where: {
+        status: { in: ["DITERIMA", "DITOLAK"] },
+      },
       orderBy: { createdAt: "desc" },
       include: { menu: true },
     })
@@ -87,6 +90,7 @@ batchesRouter.get("/", async (req, res, next) => {
         id: batch.id,
         batchIdUnik: batch.id,
         namaMenu: batch.menu.name,
+        jumlahPorsi: batch.totalPorsi,
         waktuProduksi: batch.waktuMulai?.toISOString() ?? batch.createdAt.toISOString(),
         status: batch.status,
       })),

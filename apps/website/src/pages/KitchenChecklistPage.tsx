@@ -1124,10 +1124,10 @@ export function KitchenChecklistPage({
             >
               ×
             </Button>
-            <p className="mb-2 pr-10 text-sm font-medium">{zoomPhoto.label}</p>
+            <p className="mb-2 pr-10 text-sm font-medium">{zoomPhoto?.label}</p>
             <img
-              src={zoomPhoto.url}
-              alt={zoomPhoto.label}
+              src={zoomPhoto?.url}
+              alt={zoomPhoto?.label}
               className="h-full w-full rounded-lg object-contain"
             />
           </div>

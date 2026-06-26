@@ -12,6 +12,77 @@ export const studentComplaintsRouter = Router()
 
 studentComplaintsRouter.use(requireAuth)
 
+function isUuid(value?: string | null) {
+  return Boolean(
+    value?.match(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i
+    )
+  )
+}
+
+async function getReporterSchoolId(user: {
+  id: string
+  role: string
+  schoolId?: string | null
+  username: string
+}) {
+  if (user.role !== "SEKOLAH") {
+    return null
+  }
+
+  if (user.schoolId) {
+    return user.schoolId
+  }
+
+  if (!isUuid(user.id)) {
+    return user.id
+  }
+
+  const account = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { schoolId: true },
+  })
+
+  return account?.schoolId ?? user.id
+}
+
+async function resolveReporterSchools<T extends { sekolahId: string }>(
+  complaints: T[]
+) {
+  const reporterIds = [...new Set(complaints.map((complaint) => complaint.sekolahId))]
+  const uuidReporterIds = reporterIds.filter(isUuid)
+  const schoolAccounts = uuidReporterIds.length
+    ? await prisma.user.findMany({
+        where: {
+          role: "SEKOLAH",
+          OR: [
+            { id: { in: uuidReporterIds } },
+            { schoolId: { in: uuidReporterIds } },
+          ],
+        },
+        select: { id: true, schoolId: true, username: true },
+      })
+    : []
+  const accountByUserId = new Map(
+    schoolAccounts.map((account) => [account.id, account])
+  )
+  const accountBySchoolId = new Map(
+    schoolAccounts
+      .filter((account) => account.schoolId)
+      .map((account) => [account.schoolId as string, account])
+  )
+
+  return complaints.map((complaint) => ({
+    ...complaint,
+    sekolahId:
+      accountByUserId.get(complaint.sekolahId)?.schoolId ?? complaint.sekolahId,
+    sekolahUsername:
+      accountBySchoolId.get(complaint.sekolahId)?.username ??
+      accountByUserId.get(complaint.sekolahId)?.username ??
+      complaint.sekolahId,
+  }))
+}
+
 studentComplaintsRouter.get("/", async (req, res, next) => {
   try {
     const currentUser = await getCurrentUser(req)
@@ -20,11 +91,17 @@ studentComplaintsRouter.get("/", async (req, res, next) => {
       return res.status(401).json({ message: "Tidak terautentikasi." })
     }
 
+    const reporterSchoolId = await getReporterSchoolId(currentUser)
+    const schoolFilter =
+      currentUser.role === "SEKOLAH"
+        ? { sekolahId: { in: [currentUser.id, reporterSchoolId].filter(Boolean) as string[] } }
+        : {}
+
     const complaints = await prisma.studentComplaint.findMany({
-      where: currentUser.role === "SEKOLAH" ? { sekolahId: currentUser.id } : {},
+      where: schoolFilter,
       orderBy: { createdAt: "desc" },
     })
-    res.json({ data: complaints })
+    res.json({ data: await resolveReporterSchools(complaints) })
   } catch (error) {
     const currentUser = await getCurrentUser(req)
 
@@ -59,9 +136,10 @@ studentComplaintsRouter.post("/", async (req, res, next) => {
       }
     const normalizedSymptoms = gejala?.trim()
     const normalizedAction = tindakan?.trim()
+    const reporterSchoolId = await getReporterSchoolId(currentUser)
     const resolvedSekolahId =
       currentUser.role === "SEKOLAH"
-        ? currentUser.id
+        ? reporterSchoolId
         : sekolahId?.trim() || currentUser.id
     const incidentDate = waktuKejadian ? new Date(waktuKejadian) : null
 
@@ -88,7 +166,7 @@ studentComplaintsRouter.post("/", async (req, res, next) => {
       },
     })
 
-    res.status(201).json({ data: complaint })
+    res.status(201).json({ data: (await resolveReporterSchools([complaint]))[0] })
   } catch (error) {
     const currentUser = await getCurrentUser(req)
 
@@ -107,9 +185,10 @@ studentComplaintsRouter.post("/", async (req, res, next) => {
       }
     const normalizedSymptoms = gejala?.trim()
     const normalizedAction = tindakan?.trim()
+    const reporterSchoolId = await getReporterSchoolId(currentUser)
     const resolvedSekolahId =
       currentUser.role === "SEKOLAH"
-        ? currentUser.id
+        ? reporterSchoolId
         : sekolahId?.trim() || currentUser.id
     const incidentDate = waktuKejadian ? new Date(waktuKejadian) : null
 
@@ -134,6 +213,6 @@ studentComplaintsRouter.post("/", async (req, res, next) => {
       batchId: batchId?.trim() || null,
     })
 
-    res.status(201).json({ data: complaint })
+    res.status(201).json({ data: (await resolveReporterSchools([complaint]))[0] })
   }
 })

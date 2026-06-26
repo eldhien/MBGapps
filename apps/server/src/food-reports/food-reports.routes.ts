@@ -14,6 +14,77 @@ const reportCategories = new Set<string>(Object.values(ReportCategory))
 
 foodReportsRouter.use(requireAuth)
 
+function isUuid(value?: string | null) {
+  return Boolean(
+    value?.match(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i
+    )
+  )
+}
+
+async function getReporterSchoolId(user: {
+  id: string
+  role: string
+  schoolId?: string | null
+  username: string
+}) {
+  if (user.role !== "SEKOLAH") {
+    return null
+  }
+
+  if (user.schoolId) {
+    return user.schoolId
+  }
+
+  if (!isUuid(user.id)) {
+    return user.id
+  }
+
+  const account = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { schoolId: true },
+  })
+
+  return account?.schoolId ?? user.id
+}
+
+async function resolveReporterSchools<T extends { sekolahId: string }>(
+  reports: T[]
+) {
+  const reporterIds = [...new Set(reports.map((report) => report.sekolahId))]
+  const uuidReporterIds = reporterIds.filter(isUuid)
+  const schoolAccounts = uuidReporterIds.length
+    ? await prisma.user.findMany({
+        where: {
+          role: "SEKOLAH",
+          OR: [
+            { id: { in: uuidReporterIds } },
+            { schoolId: { in: uuidReporterIds } },
+          ],
+        },
+        select: { id: true, schoolId: true, username: true },
+      })
+    : []
+  const accountByUserId = new Map(
+    schoolAccounts.map((account) => [account.id, account])
+  )
+  const accountBySchoolId = new Map(
+    schoolAccounts
+      .filter((account) => account.schoolId)
+      .map((account) => [account.schoolId as string, account])
+  )
+
+  return reports.map((report) => ({
+    ...report,
+    sekolahId:
+      accountByUserId.get(report.sekolahId)?.schoolId ?? report.sekolahId,
+    sekolahUsername:
+      accountBySchoolId.get(report.sekolahId)?.username ??
+      accountByUserId.get(report.sekolahId)?.username ??
+      report.sekolahId,
+  }))
+}
+
 foodReportsRouter.get("/", async (req, res, next) => {
   try {
     const currentUser = await getCurrentUser(req)
@@ -22,11 +93,17 @@ foodReportsRouter.get("/", async (req, res, next) => {
       return res.status(401).json({ message: "Tidak terautentikasi." })
     }
 
+    const reporterSchoolId = await getReporterSchoolId(currentUser)
+    const schoolFilter =
+      currentUser.role === "SEKOLAH"
+        ? { sekolahId: { in: [currentUser.id, reporterSchoolId].filter(Boolean) as string[] } }
+        : {}
+
     const reports = await prisma.foodReport.findMany({
-      where: currentUser.role === "SEKOLAH" ? { sekolahId: currentUser.id } : {},
+      where: schoolFilter,
       orderBy: { createdAt: "desc" },
     })
-    res.json({ data: reports })
+    res.json({ data: await resolveReporterSchools(reports) })
   } catch (error) {
     const currentUser = await getCurrentUser(req)
 
@@ -61,9 +138,10 @@ foodReportsRouter.post("/", async (req, res, next) => {
     const normalizedDescription = deskripsi?.trim()
     const normalizedOtherCategory =
       kategori === "LAINNYA" ? kategoriLainnya?.trim() || null : null
+    const reporterSchoolId = await getReporterSchoolId(currentUser)
     const resolvedSekolahId =
       currentUser.role === "SEKOLAH"
-        ? currentUser.id
+        ? reporterSchoolId
         : sekolahId?.trim() || currentUser.id
 
     if (!kategori || !normalizedDescription || !resolvedSekolahId) {
@@ -91,7 +169,7 @@ foodReportsRouter.post("/", async (req, res, next) => {
       },
     })
 
-    res.status(201).json({ data: report })
+    res.status(201).json({ data: (await resolveReporterSchools([report]))[0] })
   } catch (error) {
     const currentUser = await getCurrentUser(req)
 
@@ -110,9 +188,10 @@ foodReportsRouter.post("/", async (req, res, next) => {
     const normalizedDescription = deskripsi?.trim()
     const normalizedOtherCategory =
       kategori === "LAINNYA" ? kategoriLainnya?.trim() || null : null
+    const reporterSchoolId = await getReporterSchoolId(currentUser)
     const resolvedSekolahId =
       currentUser.role === "SEKOLAH"
-        ? currentUser.id
+        ? reporterSchoolId
         : sekolahId?.trim() || currentUser.id
 
     if (!kategori || !normalizedDescription || !resolvedSekolahId) {
@@ -137,6 +216,6 @@ foodReportsRouter.post("/", async (req, res, next) => {
       batchId: batchId?.trim() || null,
     })
 
-    res.status(201).json({ data: report })
+    res.status(201).json({ data: (await resolveReporterSchools([report]))[0] })
   }
 })

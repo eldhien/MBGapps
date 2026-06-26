@@ -835,7 +835,7 @@ export function BatchListPage({
               ×
             </Button>
             <img
-              src={zoomFotoUrl}
+              src={zoomFotoUrl ?? undefined}
               alt="Preview foto makanan"
               className="h-full w-full rounded-lg object-contain"
             />

@@ -7,7 +7,9 @@ import type {
   DashboardAnalytics,
   FoodReport,
   FoodReportCategory,
+  SchoolAccount,
 } from "@/lib/api"
+import { useAuth } from "@/features/auth/AuthProvider"
 import { api } from "@/lib/api"
 import {
   getCachedPageData,
@@ -65,6 +67,7 @@ export function FoodReportsPage({
 }: {
   mode?: "create" | "history"
 }) {
+  const { profile } = useAuth()
   const [searchParams] = useSearchParams()
   const prefilledBatchId = searchParams.get("batchId") ?? ""
   const cachedReports = getCachedPageData<FoodReport[]>(
@@ -73,6 +76,9 @@ export function FoodReportsPage({
   const cachedBatches = getCachedPageData<BatchSummary[]>(pageCacheKeys.batches)
   const [reports, setReports] = useState<FoodReport[]>(cachedReports ?? [])
   const [batches, setBatches] = useState<BatchSummary[]>(cachedBatches ?? [])
+  const [schools, setSchools] = useState<SchoolAccount[]>(() =>
+    getCachedPageData<SchoolAccount[]>(pageCacheKeys.schoolAccounts) ?? []
+  )
   const [loading, setLoading] = useState(!cachedReports)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
@@ -115,9 +121,12 @@ export function FoodReportsPage({
     setError(null)
 
     try {
-      const [reportsResponse, batchesResponse] = await Promise.allSettled([
+      const [reportsResponse, batchesResponse, schoolsResponse] = await Promise.allSettled([
         api.foodReports.list(),
         api.batches.list(),
+        profile?.role === "SEKOLAH"
+          ? Promise.resolve({ schools: [] as SchoolAccount[] })
+          : api.schoolAccounts.list(),
       ])
 
       if (reportsResponse.status === "fulfilled") {
@@ -137,6 +146,12 @@ export function FoodReportsPage({
         )
       } else {
         setBatches([])
+      }
+
+      if (schoolsResponse.status === "fulfilled" && schoolsResponse.value.schools.length) {
+        setSchools(
+          setCachedPageData(pageCacheKeys.schoolAccounts, schoolsResponse.value.schools)
+        )
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Terjadi kesalahan.")
@@ -202,7 +217,24 @@ export function FoodReportsPage({
   }
 
   const isCreatePage = mode === "create"
+  const showSchoolReporter = profile?.role !== "SEKOLAH"
   const pageTitle = isCreatePage ? "Buat Laporan Masalah" : "Riwayat Laporan"
+  const reporterNameById = new Map(
+    schools.flatMap((school) => [
+      [school.id, school.account?.username ?? school.name] as const,
+      ...(school.account?.id
+        ? [[school.account.id, school.account.username] as const]
+        : []),
+    ])
+  )
+
+  function getReporterName(report: FoodReport) {
+    return (
+      reporterNameById.get(report.sekolahId) ??
+      report.sekolahUsername ??
+      "Sekolah tidak diketahui"
+    )
+  }
 
   return (
     <DashboardShell title={pageTitle}>
@@ -370,6 +402,9 @@ export function FoodReportsPage({
               <thead>
                 <tr className="border-b text-left text-muted-foreground">
                   <th className="px-4 py-3 font-medium">Tanggal</th>
+                  {showSchoolReporter ? (
+                    <th className="px-4 py-3 font-medium">Sekolah Pelapor</th>
+                  ) : null}
                   <th className="px-4 py-3 font-medium">Kategori</th>
                   <th className="px-4 py-3 font-medium">Deskripsi</th>
                   <th className="px-4 py-3 font-medium">Batch</th>
@@ -383,6 +418,11 @@ export function FoodReportsPage({
                         <td className="px-4 py-3">
                           <Skeleton className="h-4 w-32" />
                         </td>
+                        {showSchoolReporter ? (
+                          <td className="px-4 py-3">
+                            <Skeleton className="h-4 w-32" />
+                          </td>
+                        ) : null}
                         <td className="px-4 py-3">
                           <Skeleton className="h-4 w-28" />
                         </td>
@@ -402,7 +442,7 @@ export function FoodReportsPage({
                 {!loading && reports.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={showSchoolReporter ? 6 : 5}
                       className="px-4 py-8 text-center text-muted-foreground"
                     >
                       Belum ada laporan masalah makanan yang terkirim.
@@ -442,6 +482,13 @@ export function FoodReportsPage({
                           {new Date(report.createdAt).toLocaleTimeString("id-ID")}
                         </p>
                       </td>
+                      {showSchoolReporter ? (
+                        <td className="px-4 py-3">
+                          <span className="text-sm font-medium">
+                            {getReporterName(report)}
+                          </span>
+                        </td>
+                      ) : null}
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <div className={`rounded-md border p-1.5 ${categoryColors[report.kategori]}`}>

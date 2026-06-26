@@ -1,4 +1,5 @@
 import type React from "react"
+import type { UserRole } from "@/features/auth/types"
 import { useAuth } from "@/features/auth/AuthProvider"
 import { canAccessPage, findNavigationPage } from "@/features/navigation/navigation"
 import { Navigate, useLocation } from "react-router-dom"

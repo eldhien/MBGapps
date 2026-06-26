@@ -47,25 +47,30 @@ export function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (cachedAnalytics) {
-      return
-    }
-
+    let isMounted = true
     const load = async () => {
       try {
         const response = await api.dashboard.analytics()
-        setAnalytics(
-          setCachedPageData(pageCacheKeys.dashboardAnalytics, response.data)
-        )
+        if (!isMounted) return
+        setAnalytics(setCachedPageData(pageCacheKeys.dashboardAnalytics, response.data))
+        setError(null)
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Terjadi kesalahan.")
+        if (isMounted) {
+          setError(err instanceof Error ? err.message : "Terjadi kesalahan.")
+        }
       } finally {
-        setLoading(false)
+        if (isMounted) {
+          setLoading(false)
+        }
       }
     }
 
     load()
-  }, [cachedAnalytics])
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   const data = analytics ?? emptyAnalytics
 

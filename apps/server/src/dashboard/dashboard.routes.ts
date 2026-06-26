@@ -9,6 +9,61 @@ export const dashboardRouter = Router()
 
 dashboardRouter.use(requireAuth)
 
+function isUuid(value?: string | null) {
+  return Boolean(
+    value?.match(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i
+    )
+  )
+}
+
+async function getReporterSchoolId(user: {
+  id: string
+  role: string
+  schoolId?: string | null
+  username: string
+}) {
+  if (user.role !== "SEKOLAH") {
+    return null
+  }
+
+  if (user.schoolId) {
+    return user.schoolId
+  }
+
+  if (!isUuid(user.id)) {
+    return user.id
+  }
+
+  const account = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { schoolId: true },
+  })
+
+  return account?.schoolId ?? user.id
+}
+
+async function getSppgOwnerId(user: {
+  id: string
+  role: string
+  username: string
+}) {
+  if (user.role !== "SPPG") {
+    return null
+  }
+
+  if (isUuid(user.id)) {
+    return user.id
+  }
+
+  const account = await prisma.user.findUnique({
+    where: { username: user.username },
+    select: { id: true },
+  })
+
+  return account?.id ?? null
+}
+
 dashboardRouter.get("/analytics", async (req, res, next) => {
   try {
     const currentUser = await getCurrentUser(req)
@@ -17,26 +72,80 @@ dashboardRouter.get("/analytics", async (req, res, next) => {
       return res.status(401).json({ message: "Tidak terautentikasi." })
     }
 
-    const distributionWhere =
-      currentUser.role === "SEKOLAH" ? { sekolahId: currentUser.id } : {}
-    const reportWhere =
-      currentUser.role === "SEKOLAH" ? { sekolahId: currentUser.id } : {}
+    const reporterSchoolId = await getReporterSchoolId(currentUser)
+    const sppgOwnerId = await getSppgOwnerId(currentUser)
+    const schoolReporterIds =
+      currentUser.role === "SEKOLAH"
+        ? ([currentUser.id, reporterSchoolId].filter(Boolean) as string[])
+        : []
 
-    const [distributionBatches, totalDistributions, pendingDistributions, deliveredDistributions, totalFoodReports, totalStudentComplaints] =
+    const distributionSchoolWhere =
+      currentUser.role === "SEKOLAH"
+        ? reporterSchoolId
+          ? { schoolId: reporterSchoolId }
+          : { id: "__no_school__" }
+        : currentUser.role === "SPPG"
+          ? sppgOwnerId
+            ? { school: { sppgId: sppgOwnerId } }
+            : { id: "__no_sppg__" }
+          : {}
+
+    const batchWhere =
+      currentUser.role === "SEKOLAH"
+        ? reporterSchoolId
+          ? {
+              distributions: {
+                some: {
+                  schools: {
+                    some: {
+                      schoolId: reporterSchoolId,
+                    },
+                  },
+                },
+              },
+            }
+          : { id: "__no_school__" }
+        : currentUser.role === "SPPG"
+          ? sppgOwnerId
+            ? {
+                OR: [
+                  { petugasId: sppgOwnerId },
+                  {
+                    distributions: {
+                      some: {
+                        schools: {
+                          some: {
+                            school: {
+                              sppgId: sppgOwnerId,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                ],
+              }
+            : { id: "__no_sppg__" }
+          : {}
+
+    const reportWhere =
+      currentUser.role === "SEKOLAH"
+        ? { sekolahId: { in: schoolReporterIds } }
+        : {}
+
+    const [totalBatches, totalDistributions, pendingDistributions, deliveredDistributions, totalFoodReports, totalStudentComplaints] =
       await Promise.all([
-        prisma.distribution.findMany({
-          where: distributionWhere,
-          distinct: ["batchId"],
-          select: { batchId: true },
+        prisma.batchProduksi.count({
+          where: batchWhere,
         }),
-        prisma.distribution.count({
-          where: distributionWhere,
+        prisma.batchDistributionSchool.count({
+          where: distributionSchoolWhere,
         }),
-        prisma.distribution.count({
-          where: { ...distributionWhere, status: "PENDING" },
+        prisma.batchDistributionSchool.count({
+          where: { ...distributionSchoolWhere, status: "MENUNGGU" },
         }),
-        prisma.distribution.count({
-          where: { ...distributionWhere, status: "DELIVERED" },
+        prisma.batchDistributionSchool.count({
+          where: { ...distributionSchoolWhere, status: "DITERIMA" },
         }),
         prisma.foodReport.count({
           where: reportWhere,
@@ -45,11 +154,6 @@ dashboardRouter.get("/analytics", async (req, res, next) => {
           where: reportWhere,
         }),
       ])
-
-    const totalBatches =
-      currentUser.role === "SEKOLAH"
-        ? distributionBatches.length
-        : await prisma.batch.count()
 
     res.json({
       data: {

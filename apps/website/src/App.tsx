@@ -7,6 +7,7 @@ import { ComingSoonPage } from "@/pages/ComingSoonPage"
 import { DashboardPage } from "@/pages/DashboardPage"
 import { DistributionPage } from "@/pages/DistributionPage"
 import { DriversPage } from "@/pages/DriversPage"
+import { ExportPdfPage } from "@/pages/ExportPdfPage"
 import { FoodReportsPage } from "@/pages/FoodReportsPage"
 import { KitchenChecklistPage } from "@/pages/KitchenChecklistPage"
 import { LoginPage } from "@/pages/LoginPage"
@@ -255,12 +256,7 @@ export function App() {
           path="/reports/export-pdf"
           element={
             <RoleRoute>
-              <ComingSoonPage
-                title="Export Laporan PDF"
-                features={[
-                  "Export laporan PDF: produksi, distribusi, risiko, keluhan.",
-                ]}
-              />
+              <ExportPdfPage />
             </RoleRoute>
           }
         />

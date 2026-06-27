@@ -2,6 +2,10 @@ import { Router } from "express"
 
 import { getCurrentUser } from "../auth/session.js"
 import {
+  buildComplaintAnalysis,
+  normalizeAnalysisPeriod,
+} from "./complaint-analysis.js"
+import {
   createFallbackStudentComplaint,
   listFallbackStudentComplaints,
 } from "../lib/fallback-store.js"
@@ -82,6 +86,142 @@ async function resolveReporterSchools<T extends { sekolahId: string }>(
       complaint.sekolahId,
   }))
 }
+
+studentComplaintsRouter.get("/analysis", async (req, res, next) => {
+  try {
+    const currentUser = await getCurrentUser(req)
+
+    if (!currentUser) {
+      return res.status(401).json({ message: "Tidak terautentikasi." })
+    }
+
+    const period = normalizeAnalysisPeriod(req.query.period)
+    const reporterSchoolId = await getReporterSchoolId(currentUser)
+    const schoolFilter =
+      currentUser.role === "SEKOLAH"
+        ? { sekolahId: { in: [currentUser.id, reporterSchoolId].filter(Boolean) as string[] } }
+        : {}
+
+    const complaints = await prisma.studentComplaint.findMany({
+      where: schoolFilter,
+      orderBy: { waktuKejadian: "desc" },
+    })
+    const resolvedComplaints = await resolveReporterSchools(complaints)
+    const batchIds = [
+      ...new Set(
+        resolvedComplaints
+          .map((complaint) => complaint.batchId)
+          .filter(Boolean) as string[]
+      ),
+    ]
+    const schools = await prisma
+          .$queryRaw<
+            {
+              account_id: string | null
+              account_username: string | null
+              id: string
+              name: string
+            }[]
+          >`
+            SELECT
+              s.id::text AS id,
+              s.name,
+              account.id::text AS account_id,
+              account.username AS account_username
+            FROM "public"."schools" s
+            LEFT JOIN "public"."users" account
+              ON account.school_id::text = s.id::text
+          `
+          .then((rows) =>
+            rows.map((school) => ({
+              aliases: [
+                school.account_id,
+                school.account_username,
+              ].filter(Boolean) as string[],
+              id: school.id,
+              name: school.name,
+            }))
+          )
+          .catch(() => [])
+    const batches = batchIds.length
+      ? await prisma.batchProduksi
+          .findMany({
+            where: { id: { in: batchIds } },
+            include: {
+              driver: { select: { name: true, vehicleNumber: true } },
+              menu: { select: { name: true } },
+              distributions: {
+                include: {
+                  schools: {
+                    include: {
+                      school: { select: { id: true, name: true } },
+                    },
+                  },
+                },
+              },
+            },
+          })
+          .catch(() => [])
+      : []
+
+    const analysis = buildComplaintAnalysis({
+      period,
+      complaints: resolvedComplaints.map((complaint) => ({
+        ...complaint,
+        batchId: complaint.batchId ?? null,
+        sekolahUsername: complaint.sekolahUsername,
+      })),
+      schools,
+      batches: batches.map((batch) => ({
+        id: batch.id,
+        driverName: batch.driver?.name ?? null,
+        menuName: batch.menu?.name ?? null,
+        route: batch.ruteDistribusi ?? batch.noKendaraan ?? batch.driver?.vehicleNumber ?? null,
+        status: batch.status,
+        distributions: batch.distributions.map((distribution) => ({
+          id: distribution.id,
+          status: distribution.status,
+          waktuKirim: distribution.waktuKirim,
+          schools: distribution.schools.map((item) => ({
+            schoolId: item.schoolId,
+            schoolName: item.school.name,
+            status: item.status,
+          })),
+        })),
+      })),
+    })
+
+    return res.json({ data: analysis })
+  } catch (error) {
+    try {
+      const currentUser = await getCurrentUser(req)
+
+      if (!currentUser) {
+        return res.status(401).json({ message: "Tidak terautentikasi." })
+      }
+
+      const period = normalizeAnalysisPeriod(req.query.period)
+      const fallbackComplaints = listFallbackStudentComplaints(
+        currentUser.role === "SEKOLAH" ? currentUser.id : undefined
+      )
+
+      return res.json({
+        data: buildComplaintAnalysis({
+          period,
+          complaints: fallbackComplaints.map((complaint) => ({
+            ...complaint,
+            batchId: complaint.batchId ?? null,
+            sekolahUsername: complaint.sekolahId,
+          })),
+          schools: [],
+          batches: [],
+        }),
+      })
+    } catch (fallbackError) {
+      next(fallbackError)
+    }
+  }
+})
 
 studentComplaintsRouter.get("/", async (req, res, next) => {
   try {

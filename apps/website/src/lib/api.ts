@@ -74,6 +74,57 @@ export type StudentComplaint = {
   updatedAt: string
 }
 
+export type ComplaintAnalysisPeriod = "24h" | "7d" | "30d" | "all"
+export type ComplaintDangerCategory = "Ringan" | "Sedang" | "Berat"
+
+export type ComplaintAnalysisPattern = {
+  action: string
+  batches: {
+    id: string
+    driverName: string | null
+    menuName: string | null
+    route: string | null
+    status: string | null
+    distributions: {
+      id: string
+      status: string
+      waktuKirim: string | null
+      schools: {
+        schoolId: string
+        schoolName: string
+        status: string
+      }[]
+    }[]
+  }[]
+  category: ComplaintDangerCategory
+  confidence: number
+  evaluationFocus: string[]
+  latestDate: string | null
+  matchedTerms: string[]
+  riskReasons: string[]
+  schools: string[]
+  symptom: string
+  totalComplaints: number
+  totalStudents: number
+}
+
+export type ComplaintAnalysis = {
+  generatedAt: string
+  patterns: ComplaintAnalysisPattern[]
+  period: ComplaintAnalysisPeriod
+  stats: {
+    crossSchoolPatterns: number
+    severePatterns: number
+    totalComplaints: number
+    totalStudents: number
+  }
+  summary: {
+    conclusion: string
+    evaluationFocus: string[]
+    topPattern: ComplaintAnalysisPattern | null
+  }
+}
+
 export type KitchenChecklist = {
   id: string
   apdPhoto: string
@@ -546,6 +597,11 @@ export const api = {
   studentComplaints: {
     list() {
       return request<{ data: StudentComplaint[] }>("/student-complaints")
+    },
+    analysis(period: ComplaintAnalysisPeriod) {
+      return request<{ data: ComplaintAnalysis }>(
+        `/student-complaints/analysis?period=${encodeURIComponent(period)}`
+      )
     },
     create(payload: CreateStudentComplaintPayload) {
       return request<{ data: StudentComplaint }>("/student-complaints", {

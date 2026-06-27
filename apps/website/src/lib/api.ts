@@ -38,6 +38,22 @@ export type DashboardAnalytics = {
   totalFoodReports: number
   totalStudentComplaints: number
   dailyActivity?: { label: string; value: number }[]
+  distributionActivity?: { label: string; value: number }[]
+  latestMonitoring?: {
+    id: string
+    category: string
+    origin: string
+    destination: string
+    total: number
+    status: string
+    tone: "success" | "warning" | "danger"
+    updatedAt: string
+  }[]
+}
+
+export type DashboardTopbarData = {
+  batches: BatchSummary[]
+  foodReports: FoodReport[]
 }
 
 export type FoodReportCategory =
@@ -583,6 +599,9 @@ export const api = {
     analytics(month?: string) {
       const query = month ? `?month=${encodeURIComponent(month)}` : ""
       return request<{ data: DashboardAnalytics }>(`/dashboard/analytics${query}`)
+    },
+    topbar() {
+      return request<{ data: DashboardTopbarData }>("/dashboard/topbar")
     },
   },
   foodReports: {

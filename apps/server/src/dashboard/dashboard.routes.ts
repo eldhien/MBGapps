@@ -17,33 +17,16 @@ function isUuid(value?: string | null) {
   )
 }
 
-function getMonthRange(value?: unknown) {
-  if (typeof value !== "string" || !value.match(/^\d{4}-\d{2}$/)) {
-    const now = new Date()
-    return {
-      key: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
-      start: new Date(now.getFullYear(), now.getMonth(), 1),
-      end: new Date(now.getFullYear(), now.getMonth() + 1, 1),
-    }
-  }
+function getLastSevenDaysRange() {
+  const now = new Date()
+  const end = new Date(now)
+  end.setHours(23, 59, 59, 999)
 
-  const [year, month] = value.split("-").map(Number)
-  const start = new Date(year, month - 1, 1)
+  const start = new Date(end)
+  start.setDate(start.getDate() - 6)
+  start.setHours(0, 0, 0, 0)
 
-  if (Number.isNaN(start.getTime())) {
-    const now = new Date()
-    return {
-      key: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
-      start: new Date(now.getFullYear(), now.getMonth(), 1),
-      end: new Date(now.getFullYear(), now.getMonth() + 1, 1),
-    }
-  }
-
-  return {
-    key: value,
-    start,
-    end: new Date(year, month, 1),
-  }
+  return { start, end }
 }
 
 function withCreatedAtRange(where: Record<string, unknown>, start: Date, end: Date) {
@@ -65,9 +48,9 @@ function buildDailyActivity(
   end: Date,
   records: { createdAt: Date }[]
 ) {
-  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000)
+  const days = Math.ceil((end.getTime() - start.getTime()) / 86_400_000)
   const counts = Array.from({ length: days }, (_, index) => ({
-    label: String(index + 1),
+    label: String(new Date(start.getTime() + index * 86_400_000).getDate()),
     value: 0,
   }))
 
@@ -82,6 +65,12 @@ function buildDailyActivity(
   })
 
   return counts
+}
+
+function formatMonitoringCode(prefix: string, date: Date) {
+  return `${prefix}-${String(date.getDate()).padStart(2, "0")}${String(
+    date.getMonth() + 1
+  ).padStart(2, "0")}${date.getFullYear()}`
 }
 
 async function getReporterSchoolId(user: {
@@ -131,6 +120,176 @@ async function getSppgOwnerId(user: {
   return account?.id ?? null
 }
 
+async function getManagedSchoolReportIds(sppgOwnerId: string | null) {
+  if (!sppgOwnerId) return []
+
+  const schools = await prisma.school.findMany({
+    where: { sppgId: sppgOwnerId },
+    select: {
+      id: true,
+      account: { select: { id: true } },
+    },
+  })
+
+  return schools.flatMap((school) =>
+    [school.id, school.account?.id].filter(Boolean) as string[]
+  )
+}
+
+async function resolveFoodReportSchools<
+  T extends { sekolahId: string; createdAt: Date; updatedAt: Date },
+>(reports: T[]) {
+  const reporterIds = [...new Set(reports.map((report) => report.sekolahId))]
+  const uuidReporterIds = reporterIds.filter(isUuid)
+  const schoolAccounts = uuidReporterIds.length
+    ? await prisma.user.findMany({
+        where: {
+          role: "SEKOLAH",
+          OR: [
+            { id: { in: uuidReporterIds } },
+            { schoolId: { in: uuidReporterIds } },
+          ],
+        },
+        select: { id: true, schoolId: true, username: true },
+      })
+    : []
+  const accountByUserId = new Map(
+    schoolAccounts.map((account) => [account.id, account])
+  )
+  const accountBySchoolId = new Map(
+    schoolAccounts
+      .filter((account) => account.schoolId)
+      .map((account) => [account.schoolId as string, account])
+  )
+
+  return reports.map((report) => ({
+    ...report,
+    sekolahId:
+      accountByUserId.get(report.sekolahId)?.schoolId ?? report.sekolahId,
+    sekolahUsername:
+      accountBySchoolId.get(report.sekolahId)?.username ??
+      accountByUserId.get(report.sekolahId)?.username ??
+      report.sekolahId,
+    createdAt: report.createdAt.toISOString(),
+    updatedAt: report.updatedAt.toISOString(),
+  }))
+}
+
+function toBatchSummary(batch: {
+  createdAt: Date
+  id: string
+  menu: { name: string } | null
+  status: string
+  totalPorsi: number
+  waktuMulai: Date | null
+}) {
+  return {
+    id: batch.id,
+    batchIdUnik: batch.id,
+    jumlahPorsi: batch.totalPorsi,
+    namaMenu: batch.menu?.name ?? "Menu tidak diketahui",
+    status: batch.status,
+    waktuProduksi: (batch.waktuMulai ?? batch.createdAt).toISOString(),
+  }
+}
+
+dashboardRouter.get("/topbar", async (req, res) => {
+  try {
+    const currentUser = await getCurrentUser(req)
+
+    if (!currentUser) {
+      return res.status(401).json({ message: "Tidak terautentikasi." })
+    }
+
+    const reporterSchoolId = await getReporterSchoolId(currentUser)
+    const sppgOwnerId = await getSppgOwnerId(currentUser)
+    const schoolReporterIds =
+      currentUser.role === "SEKOLAH"
+        ? ([currentUser.id, reporterSchoolId].filter(Boolean) as string[])
+        : currentUser.role === "SPPG"
+          ? await getManagedSchoolReportIds(sppgOwnerId)
+          : null
+    const reportWhere =
+      schoolReporterIds === null
+        ? {}
+        : schoolReporterIds.length
+          ? { sekolahId: { in: schoolReporterIds } }
+          : { id: "__no_report__" }
+    const batchWhere =
+      currentUser.role === "SEKOLAH"
+        ? reporterSchoolId
+          ? {
+              distributions: {
+                some: {
+                  schools: {
+                    some: {
+                      schoolId: reporterSchoolId,
+                    },
+                  },
+                },
+              },
+            }
+          : { id: "__no_school__" }
+        : currentUser.role === "SPPG"
+          ? sppgOwnerId
+            ? {
+                OR: [
+                  { petugasId: sppgOwnerId },
+                  {
+                    distributions: {
+                      some: {
+                        schools: {
+                          some: {
+                            school: {
+                              sppgId: sppgOwnerId,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                ],
+              }
+            : { id: "__no_sppg__" }
+          : {}
+
+    const [foodReports, batches] = await Promise.all([
+      prisma.foodReport.findMany({
+        where: reportWhere,
+        orderBy: { createdAt: "desc" },
+        take: 12,
+      }),
+      prisma.batchProduksi.findMany({
+        where: batchWhere,
+        orderBy: { createdAt: "desc" },
+        take: 12,
+        select: {
+          id: true,
+          totalPorsi: true,
+          status: true,
+          createdAt: true,
+          waktuMulai: true,
+          menu: { select: { name: true } },
+        },
+      }),
+    ])
+
+    res.json({
+      data: {
+        foodReports: await resolveFoodReportSchools(foodReports),
+        batches: batches.map(toBatchSummary),
+      },
+    })
+  } catch {
+    res.json({
+      data: {
+        foodReports: [],
+        batches: [],
+      },
+    })
+  }
+})
+
 dashboardRouter.get("/analytics", async (req, res, next) => {
   try {
     const currentUser = await getCurrentUser(req)
@@ -141,7 +300,7 @@ dashboardRouter.get("/analytics", async (req, res, next) => {
 
     const reporterSchoolId = await getReporterSchoolId(currentUser)
     const sppgOwnerId = await getSppgOwnerId(currentUser)
-    const { start, end } = getMonthRange(req.query.month)
+    const { start, end } = getLastSevenDaysRange()
     const schoolReporterIds =
       currentUser.role === "SEKOLAH"
         ? ([currentUser.id, reporterSchoolId].filter(Boolean) as string[])
@@ -220,6 +379,10 @@ dashboardRouter.get("/analytics", async (req, res, next) => {
       distributionActivity,
       reportActivity,
       complaintActivity,
+      latestBatch,
+      latestDistribution,
+      latestFoodReport,
+      latestStudentComplaint,
     ] =
       await Promise.all([
         prisma.batchProduksi.count({
@@ -260,6 +423,62 @@ dashboardRouter.get("/analytics", async (req, res, next) => {
           where: reportDateWhere,
           select: { createdAt: true },
         }),
+        prisma.batchProduksi.findFirst({
+          where: batchDateWhere,
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            status: true,
+            totalPorsi: true,
+            createdAt: true,
+            menu: { select: { name: true } },
+          },
+        }),
+        prisma.batchDistributionSchool.findFirst({
+          where: distributionDateWhere,
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            jumlahPorsi: true,
+            status: true,
+            createdAt: true,
+            school: { select: { name: true } },
+            distribution: {
+              select: {
+                id: true,
+                status: true,
+                batchId: true,
+                batch: {
+                  select: {
+                    driver: { select: { name: true } },
+                    menu: { select: { name: true } },
+                  },
+                },
+              },
+            },
+          },
+        }),
+        prisma.foodReport.findFirst({
+          where: reportDateWhere,
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            kategori: true,
+            kategoriLainnya: true,
+            status: true,
+            createdAt: true,
+          },
+        }),
+        prisma.studentComplaint.findFirst({
+          where: reportDateWhere,
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            jumlahSiswa: true,
+            gejala: true,
+            createdAt: true,
+          },
+        }),
       ])
 
     const dailyActivity = buildDailyActivity(start, end, [
@@ -268,6 +487,76 @@ dashboardRouter.get("/analytics", async (req, res, next) => {
       ...reportActivity,
       ...complaintActivity,
     ])
+    const distributionDailyActivity = buildDailyActivity(
+      start,
+      end,
+      distributionActivity
+    )
+    const latestMonitoring = [
+      latestBatch
+        ? {
+            id: latestBatch.id,
+            category: "Produksi",
+            origin: "Dapur MBG",
+            destination: latestBatch.menu?.name ?? "Menu",
+            total: latestBatch.totalPorsi,
+            status: latestBatch.status,
+            tone:
+              latestBatch.status === "DITOLAK"
+                ? "danger"
+                : latestBatch.status === "DRAFT"
+                  ? "warning"
+                  : "success",
+            updatedAt: latestBatch.createdAt.toISOString(),
+          }
+        : null,
+      latestDistribution
+        ? {
+            id: formatMonitoringCode("DIST", latestDistribution.createdAt),
+            category: "Distribusi",
+            origin: latestDistribution.distribution.batch.driver?.name ?? "SPPG",
+            destination: latestDistribution.school.name,
+            total: latestDistribution.jumlahPorsi,
+            status: latestDistribution.status,
+            tone:
+              latestDistribution.status === "DITOLAK"
+                ? "danger"
+                : latestDistribution.status === "MENUNGGU"
+                  ? "warning"
+                  : "success",
+            updatedAt: latestDistribution.createdAt.toISOString(),
+          }
+        : null,
+      latestFoodReport
+        ? {
+            id: formatMonitoringCode("LAP", latestFoodReport.createdAt),
+            category: "Laporan Sekolah",
+            origin: "Sekolah",
+            destination:
+              latestFoodReport.kategori === "LAINNYA" &&
+              latestFoodReport.kategoriLainnya
+                ? latestFoodReport.kategoriLainnya
+                : latestFoodReport.kategori.replaceAll("_", " "),
+            total: 1,
+            status: latestFoodReport.status,
+            tone:
+              latestFoodReport.status === "RESOLVED" ? "success" : "warning",
+            updatedAt: latestFoodReport.createdAt.toISOString(),
+          }
+        : null,
+      latestStudentComplaint
+        ? {
+            id: formatMonitoringCode("KEL", latestStudentComplaint.createdAt),
+            category: "Keluhan Siswa",
+            origin: "Sekolah",
+            destination: latestStudentComplaint.gejala,
+            total: latestStudentComplaint.jumlahSiswa,
+            status: "Tercatat",
+            tone: "warning",
+            updatedAt: latestStudentComplaint.createdAt.toISOString(),
+          }
+        : null,
+    ].filter(Boolean)
 
     res.json({
       data: {
@@ -278,6 +567,8 @@ dashboardRouter.get("/analytics", async (req, res, next) => {
         totalFoodReports,
         totalStudentComplaints,
         dailyActivity,
+        distributionActivity: distributionDailyActivity,
+        latestMonitoring,
       },
     })
   } catch (error) {

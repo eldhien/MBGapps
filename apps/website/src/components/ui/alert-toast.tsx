@@ -17,6 +17,7 @@ export function AlertToast({
   variant?: "default" | "destructive"
 }) {
   const Icon = variant === "destructive" ? TriangleAlertIcon : CheckCircle2Icon
+  const isDestructive = variant === "destructive"
 
   useEffect(() => {
     if (!onClose) return
@@ -29,20 +30,26 @@ export function AlertToast({
   return (
     <div className="fixed top-5 right-5 z-50 w-[min(360px,calc(100vw-2rem))]">
       <Alert
-        variant={variant}
+        variant="default"
         className={cn(
-          "rounded-2xl border-[#e8edf5] bg-white px-4 py-3 text-slate-950 shadow-[0_18px_48px_rgba(15,23,42,0.14)]",
-          variant === "destructive" &&
-            "border-red-100 bg-white text-red-600 *:data-[slot=alert-description]:text-red-500"
+          "rounded-2xl bg-white px-4 py-3 shadow-[0_18px_48px_rgba(15,23,42,0.14)]",
+          isDestructive ? "border-red-100" : "border-[#dbe4ff]"
         )}
       >
         <Icon
           className={cn(
             "mt-0.5 size-5",
-            variant === "destructive" ? "text-red-500" : "text-[#0528f2]"
+            isDestructive ? "text-red-600" : "text-[#0528f2]"
           )}
         />
-        <AlertTitle className="text-sm font-semibold">{title}</AlertTitle>
+        <AlertTitle
+          className={cn(
+            "text-sm font-semibold",
+            isDestructive ? "text-red-600" : "text-[#0528f2]"
+          )}
+        >
+          {title}
+        </AlertTitle>
         <AlertDescription className="text-sm text-slate-500">
           {description}
         </AlertDescription>

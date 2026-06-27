@@ -163,5 +163,8 @@ export function getFallbackDashboardAnalytics(sekolahId?: string) {
     deliveredDistributions: 0,
     totalFoodReports: foodReports.length,
     totalStudentComplaints: studentComplaints.length,
+    dailyActivity: [],
+    distributionActivity: [],
+    latestMonitoring: [],
   }
 }

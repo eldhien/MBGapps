@@ -37,7 +37,7 @@ export function NavMain({
   const location = useLocation()
   const { isMobile, setOpenMobile } = useSidebar()
   const menuButtonClass =
-    "h-9 rounded-lg px-2.5 text-[13px] font-medium text-sidebar-foreground/62 hover:bg-white hover:text-[#0528f2] hover:shadow-[0_8px_20px_rgba(15,23,42,0.05)] data-[active=true]:bg-white data-[active=true]:text-[#0528f2] data-[active=true]:shadow-[0_10px_24px_rgba(15,23,42,0.08)] [&_svg]:text-current"
+    "h-9 rounded-lg px-2.5 text-[13px] font-medium text-sidebar-foreground/62 hover:bg-white hover:text-[#0528f2] hover:shadow-[0_8px_20px_rgba(15,23,42,0.05)] data-[active=true]:bg-white data-[active=true]:text-[#0528f2] data-[active=true]:shadow-[0_10px_24px_rgba(15,23,42,0.08)] group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-xl group-data-[collapsible=icon]:p-0! [&_svg]:text-current"
   const subButtonClass =
     "h-8 rounded-lg px-2 text-[12px] text-sidebar-foreground/55 hover:bg-white hover:text-[#0528f2] data-active:bg-white data-active:text-[#0528f2] data-active:shadow-[0_8px_20px_rgba(15,23,42,0.06)] [&>svg]:!text-current [&>svg]:!stroke-current [&_svg]:!text-current [&_svg]:!stroke-current"
 
@@ -74,8 +74,10 @@ export function NavMain({
                       className={menuButtonClass}
                     >
                       {item.icon}
-                      <span>{item.title}</span>
-                      <ChevronRightIcon className="ml-auto size-3.5 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+                      <span className="group-data-[collapsible=icon]:hidden">
+                        {item.title}
+                      </span>
+                      <ChevronRightIcon className="ml-auto size-3.5 transition-transform duration-200 group-data-[collapsible=icon]:hidden group-data-[state=open]/collapsible:rotate-90" />
                     </SidebarMenuButton>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
@@ -130,7 +132,9 @@ export function NavMain({
                   }}
                 >
                   {item.icon}
-                  <span>{item.title}</span>
+                  <span className="group-data-[collapsible=icon]:hidden">
+                    {item.title}
+                  </span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

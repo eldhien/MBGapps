@@ -4,8 +4,14 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
+import { AlertToast } from "@/components/ui/alert-toast"
 import { useAuth } from "@/features/auth/AuthProvider"
-import { api, type BatchSummary, type FoodReport } from "@/lib/api"
+import {
+  api,
+  type BatchSummary,
+  type DashboardTopbarData,
+  type FoodReport,
+} from "@/lib/api"
 import { cn } from "@/lib/utils"
 import {
   BellIcon,
@@ -16,12 +22,11 @@ import {
   XIcon,
 } from "lucide-react"
 import { useEffect, useMemo, useRef, useState } from "react"
-import { Link } from "react-router-dom"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 
 const READ_BATCH_KEY = "mbg_read_batch_notifications"
 
-let cachedFoodReports: FoodReport[] | null = null
-let cachedBatches: BatchSummary[] | null = null
+const topbarCache = new Map<string, DashboardTopbarData>()
 
 function DashboardShellFrame({
   children,
@@ -104,72 +109,92 @@ export function DashboardShell({
   variant?: "default" | "dashboard"
 }) {
   const { profile } = useAuth()
+  const location = useLocation()
+  const navigate = useNavigate()
   const userName = profile?.username ?? "Pengguna"
+  const userScopeKey = profile
+    ? `${profile.role}:${profile.id}:${profile.username}`
+    : "anonymous"
+  const readBatchStorageKey = `${READ_BATCH_KEY}:${userScopeKey}`
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
-  const [foodReports, setFoodReports] = useState<FoodReport[]>(
-    cachedFoodReports ?? []
-  )
-  const [batches, setBatches] = useState<BatchSummary[]>(cachedBatches ?? [])
-  const [readBatchIds, setReadBatchIds] = useState<string[]>(() => {
-    try {
-      return JSON.parse(
-        localStorage.getItem(READ_BATCH_KEY) ?? "[]"
-      ) as string[]
-    } catch {
-      return []
-    }
-  })
+  const [foodReports, setFoodReports] = useState<FoodReport[]>([])
+  const [batches, setBatches] = useState<BatchSummary[]>([])
+  const [readBatchIds, setReadBatchIds] = useState<string[]>([])
   const [notifOpen, setNotifOpen] = useState(false)
+  const [loginSuccess, setLoginSuccess] = useState(
+    () =>
+      (location.state as { loginSuccess?: boolean } | null)?.loginSuccess ??
+      false
+  )
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const searchBoxRef = useRef<HTMLDivElement | null>(null)
   const notifBoxRef = useRef<HTMLDivElement | null>(null)
   const greeting = getGreeting()
-  const showHeaderSearch = variant !== "dashboard"
+
+  useEffect(() => {
+    const routeLoginSuccess =
+      (location.state as { loginSuccess?: boolean } | null)?.loginSuccess ??
+      false
+
+    if (routeLoginSuccess) {
+      const timer = window.setTimeout(() => {
+        setLoginSuccess(true)
+        navigate(location.pathname, { replace: true, state: null })
+      }, 0)
+
+      return () => window.clearTimeout(timer)
+    }
+  }, [location.pathname, location.state, navigate])
 
   useEffect(() => {
     let isMounted = true
+    const timer = window.setTimeout(() => {
+      if (!profile) {
+        setFoodReports([])
+        setBatches([])
+        setReadBatchIds([])
+        return
+      }
 
-    if (cachedFoodReports) {
-      setFoodReports(cachedFoodReports)
-    } else {
-      api.foodReports
-        .list()
+      try {
+        setReadBatchIds(
+          JSON.parse(
+            localStorage.getItem(readBatchStorageKey) ?? "[]"
+          ) as string[]
+        )
+      } catch {
+        setReadBatchIds([])
+      }
+
+      const cachedTopbar = topbarCache.get(userScopeKey)
+      if (cachedTopbar) {
+        setFoodReports(cachedTopbar.foodReports)
+        setBatches(cachedTopbar.batches)
+      }
+
+      api.dashboard
+        .topbar()
         .then((response) => {
-          cachedFoodReports = response.data
+          topbarCache.set(userScopeKey, response.data)
           if (isMounted) {
-            setFoodReports(response.data)
+            setFoodReports(response.data.foodReports)
+            setBatches(response.data.batches)
           }
         })
         .catch(() => {
           if (isMounted) {
             setFoodReports([])
-          }
-        })
-    }
-
-    if (cachedBatches) {
-      setBatches(cachedBatches)
-    } else {
-      api.batches
-        .list()
-        .then((response) => {
-          cachedBatches = response.data
-          if (isMounted) {
-            setBatches(response.data)
-          }
-        })
-        .catch(() => {
-          if (isMounted) {
             setBatches([])
           }
         })
-    }
+    }, 0)
 
     return () => {
       isMounted = false
+      window.clearTimeout(timer)
     }
-  }, [])
+  }, [profile, readBatchStorageKey, userScopeKey])
 
   useEffect(() => {
     if (searchOpen) {
@@ -250,12 +275,19 @@ export function DashboardShell({
       ])
     )
     setReadBatchIds(nextIds)
-    localStorage.setItem(READ_BATCH_KEY, JSON.stringify(nextIds))
+    localStorage.setItem(readBatchStorageKey, JSON.stringify(nextIds))
     setNotifOpen(false)
   }
 
   return (
     <SidebarProvider className="min-h-svh">
+      {loginSuccess ? (
+        <AlertToast
+          title="Berhasil masuk"
+          description={`Selamat datang, ${userName}.`}
+          onClose={() => setLoginSuccess(false)}
+        />
+      ) : null}
       <AppSidebar />
       <DashboardShellFrame
         variant={variant}
@@ -270,7 +302,6 @@ export function DashboardShell({
             </h1>
           </div>
           <div className="flex min-w-0 shrink-0 items-center gap-2">
-            {showHeaderSearch ? (
               <div ref={searchBoxRef} className="relative flex items-center">
                 <button
                   type="button"
@@ -349,7 +380,6 @@ export function DashboardShell({
                   </div>
                 )}
               </div>
-            ) : null}
 
             <div ref={notifBoxRef} className="relative flex items-center">
               <button

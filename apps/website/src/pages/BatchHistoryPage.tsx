@@ -8,11 +8,16 @@ import {
   setCachedPageData,
   subscribePageCache,
 } from "@/lib/page-cache"
-import { cn } from "@/lib/utils"
 import { DashboardShell } from "@/pages/components/DashboardShell"
-import { CheckCircle2Icon, FileTextIcon, FlagIcon, XCircleIcon } from "lucide-react"
-import { useEffect, useState } from "react"
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  FlagIcon,
+} from "lucide-react"
+import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
+
+const HISTORY_BATCHES_PER_PAGE = 10
 
 function formatDate(value: string) {
   return new Date(value).toLocaleString("id-ID", {
@@ -27,27 +32,21 @@ function formatDate(value: string) {
 function getStatusConfig(status: string) {
   if (status === "DITERIMA") {
     return {
-      icon: CheckCircle2Icon,
       label: "Diterima",
-      className:
-        "border-green-500/20 bg-green-500/10 text-green-700 dark:text-green-400",
+      className: "bg-emerald-50 text-emerald-600 ring-emerald-100",
     }
   }
 
   if (status === "DITOLAK") {
     return {
-      icon: XCircleIcon,
       label: "Ditolak",
-      className:
-        "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-400",
+      className: "bg-red-50 text-red-600 ring-red-100",
     }
   }
 
   return {
-    icon: FileTextIcon,
     label: status,
-    className:
-      "border-slate-500/20 bg-slate-500/10 text-slate-700 dark:text-slate-300",
+    className: "bg-slate-50 text-slate-600 ring-slate-200",
   }
 }
 
@@ -57,6 +56,7 @@ export function BatchHistoryPage() {
   const [batches, setBatches] = useState<BatchSummary[]>(cachedBatches ?? [])
   const [isLoading, setIsLoading] = useState(!cachedBatches)
   const [error, setError] = useState<string | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
 
   async function loadData(showLoading = true) {
     if (showLoading) setIsLoading(true)
@@ -66,7 +66,9 @@ export function BatchHistoryPage() {
       const response = await api.batches.list()
       setBatches(setCachedPageData(pageCacheKeys.batches, response.data))
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Gagal memuat riwayat batch.")
+      setError(
+        err instanceof Error ? err.message : "Gagal memuat riwayat batch."
+      )
     } finally {
       if (showLoading) setIsLoading(false)
     }
@@ -90,9 +92,29 @@ export function BatchHistoryPage() {
     })
   }, [])
 
-  const finalBatches = batches.filter((batch) =>
-    ["DITERIMA", "DITOLAK", "SELESAI"].includes(batch.status)
+  const finalBatches = useMemo(
+    () =>
+      batches.filter((batch) =>
+        ["DITERIMA", "DITOLAK", "SELESAI"].includes(batch.status)
+      ),
+    [batches]
   )
+  const totalPages = Math.max(
+    1,
+    Math.ceil(finalBatches.length / HISTORY_BATCHES_PER_PAGE)
+  )
+  const paginatedBatches = useMemo(
+    () =>
+      finalBatches.slice(
+        (currentPage - 1) * HISTORY_BATCHES_PER_PAGE,
+        currentPage * HISTORY_BATCHES_PER_PAGE
+      ),
+    [currentPage, finalBatches]
+  )
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages))
+  }, [totalPages])
 
   return (
     <DashboardShell title="Riwayat Batch Makanan">
@@ -106,61 +128,62 @@ export function BatchHistoryPage() {
       ) : null}
 
       <section className="pb-1">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Riwayat
-          </p>
+        <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             Riwayat Batch Makanan
           </h1>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Batch yang sudah divalidasi sekolah akan tampil di sini.
+            Pantau batch makanan yang sudah selesai divalidasi sekolah beserta
+            status dan laporan terkait.
           </p>
         </div>
       </section>
 
-      <section className="rounded-lg border bg-card text-card-foreground">
-        <div className="flex flex-col gap-2 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
+      <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.05)]">
+        <div className="flex flex-col gap-2 border-b border-[#edf0f4] p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-lg font-semibold">Batch Tervalidasi</h2>
-            {isLoading ? (
-              <Skeleton className="mt-2 h-4 w-36" />
-            ) : (
-              <p className="mt-1 text-sm text-muted-foreground">
-                {finalBatches.length} batch masuk riwayat
-              </p>
-            )}
+            <div className="flex items-center gap-1">
+              <h1 className="text-lg font-semibold tracking-tight">
+                Batch tervalidasi
+              </h1>
+              <span className="text-lg font-semibold text-muted-foreground">
+                {isLoading ? "..." : finalBatches.length}
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Batch yang sudah divalidasi sekolah akan tampil di sini.
+            </p>
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[860px] text-sm">
             <thead>
-              <tr className="border-b text-left text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Batch ID</th>
-                <th className="px-4 py-3 font-medium">Menu</th>
-                <th className="px-4 py-3 font-medium">Waktu Produksi</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 text-right font-medium">Aksi</th>
+              <tr className="border-b border-[#edf0f4] bg-[#fcfcfd] text-left text-xs text-muted-foreground">
+                <th className="px-5 py-3 font-medium">Batch ID</th>
+                <th className="px-5 py-3 font-medium">Menu</th>
+                <th className="px-5 py-3 font-medium">Waktu Produksi</th>
+                <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 text-right font-medium">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {isLoading
-                ? Array.from({ length: 3 }).map((_, index) => (
-                    <tr key={index} className="border-b last:border-0">
-                      <td className="px-4 py-3">
+                ? Array.from({ length: 6 }).map((_, index) => (
+                    <tr key={index} className="border-b border-[#edf0f4]">
+                      <td className="px-5 py-4">
                         <Skeleton className="h-4 w-32" />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4">
                         <Skeleton className="h-4 w-40" />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4">
                         <Skeleton className="h-4 w-36" />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4">
                         <Skeleton className="h-7 w-24 rounded-full" />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4">
                         <Skeleton className="ml-auto h-8 w-28" />
                       </td>
                     </tr>
@@ -169,43 +192,48 @@ export function BatchHistoryPage() {
 
               {!isLoading && finalBatches.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                  <td
+                    colSpan={5}
+                    className="px-5 py-10 text-center text-muted-foreground"
+                  >
                     Belum ada batch makanan yang selesai divalidasi.
                   </td>
                 </tr>
               ) : null}
 
               {!isLoading
-                ? finalBatches.map((batch) => {
+                ? paginatedBatches.map((batch) => {
                     const statusConfig = getStatusConfig(batch.status)
-                    const StatusIcon = statusConfig.icon
 
                     return (
-                      <tr key={batch.id} className="border-b last:border-0">
-                        <td className="px-4 py-3 font-medium">{batch.batchIdUnik}</td>
-                        <td className="px-4 py-3">{batch.namaMenu}</td>
-                        <td className="px-4 py-3 text-muted-foreground">
+                      <tr
+                        key={batch.id}
+                        className="border-b border-[#edf0f4] last:border-0 hover:bg-[#fcfcfd]"
+                      >
+                        <td className="px-5 py-4 font-semibold">
+                          {batch.batchIdUnik}
+                        </td>
+                        <td className="px-5 py-4">{batch.namaMenu}</td>
+                        <td className="px-5 py-4 text-muted-foreground">
                           {formatDate(batch.waktuProduksi)}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-5 py-4">
                           <span
-                            className={cn(
-                              "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold",
-                              statusConfig.className
-                            )}
+                            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${statusConfig.className}`}
                           >
-                            <StatusIcon className="h-3.5 w-3.5" />
                             {statusConfig.label}
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right">
+                        <td className="px-5 py-4 text-right">
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="gap-1.5"
+                            className="rounded-lg border-red-100 text-red-600 hover:bg-red-50 hover:text-red-700"
                             onClick={() =>
-                              navigate(`/food-reports?batchId=${encodeURIComponent(batch.id)}`)
+                              navigate(
+                                `/food-reports?batchId=${encodeURIComponent(batch.id)}`
+                              )
                             }
                           >
                             <FlagIcon className="h-3.5 w-3.5" />
@@ -219,6 +247,51 @@ export function BatchHistoryPage() {
             </tbody>
           </table>
         </div>
+
+        {!isLoading && finalBatches.length > HISTORY_BATCHES_PER_PAGE ? (
+          <div className="flex items-center justify-center gap-2 border-t border-[#edf0f4] p-4">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+            >
+              <ChevronLeftIcon />
+            </Button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }).map((_, index) => {
+                const page = index + 1
+
+                return (
+                  <button
+                    key={page}
+                    type="button"
+                    className={
+                      currentPage === page
+                        ? "flex size-8 items-center justify-center rounded-lg bg-[#f3f4f6] text-sm font-semibold"
+                        : "flex size-8 items-center justify-center rounded-lg text-sm text-muted-foreground hover:bg-[#f7f8fb]"
+                    }
+                    onClick={() => setCurrentPage(page)}
+                  >
+                    {page}
+                  </button>
+                )
+              })}
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={currentPage >= totalPages}
+              onClick={() =>
+                setCurrentPage((page) => Math.min(totalPages, page + 1))
+              }
+            >
+              <ChevronRightIcon />
+            </Button>
+          </div>
+        ) : null}
       </section>
     </DashboardShell>
   )

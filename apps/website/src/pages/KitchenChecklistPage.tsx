@@ -30,6 +30,8 @@ import {
 import { DashboardShell } from "@/pages/components/DashboardShell"
 import {
   CameraIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
   CheckCircle2Icon,
   EyeIcon,
   ImageIcon,
@@ -42,7 +44,13 @@ import {
   XIcon,
   ZoomInIcon,
 } from "lucide-react"
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react"
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react"
 import { createPortal } from "react-dom"
 import { Link } from "react-router-dom"
 
@@ -67,6 +75,7 @@ type FileMetaState = Record<PhotoField, FileMeta | null>
 const maxOriginalFileSize = 8 * 1024 * 1024
 const maxCompressedFileSize = 450 * 1024
 const maxImageDimension = 1600
+const CHECKLISTS_PER_PAGE = 10
 
 const initialForm: FormState = {
   apdPhoto: "",
@@ -85,7 +94,8 @@ function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(String(reader.result ?? ""))
-    reader.onerror = () => reject(new Error("Foto belum bisa dibaca. Coba pilih foto lain."))
+    reader.onerror = () =>
+      reject(new Error("Foto belum bisa dibaca. Coba pilih foto lain."))
     reader.readAsDataURL(file)
   })
 }
@@ -94,7 +104,8 @@ function loadImage(src: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image()
     image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error("Foto belum bisa diproses. Coba pilih foto lain."))
+    image.onerror = () =>
+      reject(new Error("Foto belum bisa diproses. Coba pilih foto lain."))
     image.src = src
   })
 }
@@ -132,7 +143,10 @@ async function compressImage(file: File) {
 
   const sourceDataUrl = await readFileAsDataUrl(file)
   const image = await loadImage(sourceDataUrl)
-  const scale = Math.min(1, maxImageDimension / Math.max(image.width, image.height))
+  const scale = Math.min(
+    1,
+    maxImageDimension / Math.max(image.width, image.height)
+  )
   const width = Math.max(1, Math.round(image.width * scale))
   const height = Math.max(1, Math.round(image.height * scale))
 
@@ -142,7 +156,9 @@ async function compressImage(file: File) {
 
   const context = canvas.getContext("2d")
   if (!context) {
-    throw new Error("Foto belum bisa disiapkan di perangkat ini. Coba gunakan foto lain.")
+    throw new Error(
+      "Foto belum bisa disiapkan di perangkat ini. Coba gunakan foto lain."
+    )
   }
 
   context.drawImage(image, 0, 0, width, height)
@@ -199,7 +215,7 @@ function PhotoThumb({
         <p className="truncate text-center text-xs text-muted-foreground">
           {label}
         </p>
-        <p className="text-center text-xs italic text-muted-foreground/60">
+        <p className="text-center text-xs text-muted-foreground/60 italic">
           Belum ada
         </p>
       </div>
@@ -267,7 +283,7 @@ function PhotoLightbox({
         type="button"
         onClick={closePreview}
         onPointerDown={closePreview}
-        className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
+        className="absolute top-4 right-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur-sm hover:bg-white/20"
         aria-label="Tutup"
       >
         <XIcon className="h-5 w-5" />
@@ -299,7 +315,9 @@ export function KitchenChecklistPage({
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
-  const [processingField, setProcessingField] = useState<PhotoField | null>(null)
+  const [processingField, setProcessingField] = useState<PhotoField | null>(
+    null
+  )
   const [form, setForm] = useState<FormState>(initialForm)
   const [fileMeta, setFileMeta] = useState<FileMetaState>(initialFileMeta)
   const [fileInputKey, setFileInputKey] = useState(0)
@@ -312,16 +330,35 @@ export function KitchenChecklistPage({
     useState<PhotoField | null>(null)
   const [editSubmitting, setEditSubmitting] = useState(false)
   const [viewTarget, setViewTarget] = useState<KitchenChecklist | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<KitchenChecklist | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<KitchenChecklist | null>(
+    null
+  )
   const [deleteSubmitting, setDeleteSubmitting] = useState(false)
   const [zoomPhoto, setZoomPhoto] = useState<{
     label: string
     url: string
   } | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const totalPages = Math.max(
+    1,
+    Math.ceil(checklists.length / CHECKLISTS_PER_PAGE)
+  )
+  const paginatedChecklists = useMemo(
+    () =>
+      checklists.slice(
+        (currentPage - 1) * CHECKLISTS_PER_PAGE,
+        currentPage * CHECKLISTS_PER_PAGE
+      ),
+    [checklists, currentPage]
+  )
 
   useEffect(() => {
     void loadChecklists()
   }, [])
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages))
+  }, [totalPages])
 
   const loadChecklists = async (force = false) => {
     if (!force) {
@@ -363,7 +400,10 @@ export function KitchenChecklistPage({
     setFileInputKey((value) => value + 1)
   }
 
-  const handlePhotoChange = async (field: PhotoField, event: ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoChange = async (
+    field: PhotoField,
+    event: ChangeEvent<HTMLInputElement>
+  ) => {
     const file = event.target.files?.[0]
 
     if (!file) {
@@ -385,7 +425,11 @@ export function KitchenChecklistPage({
         [field]: uploadedPhoto,
       }))
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Foto belum bisa disiapkan.")
+      setError(
+        uploadError instanceof Error
+          ? uploadError.message
+          : "Foto belum bisa disiapkan."
+      )
       event.target.value = ""
     } finally {
       setProcessingField(null)
@@ -538,7 +582,10 @@ export function KitchenChecklistPage({
     }
 
     try {
-      const response = await api.kitchenChecklists.update(editTarget.id, payload)
+      const response = await api.kitchenChecklists.update(
+        editTarget.id,
+        payload
+      )
       setChecklists((currentChecklists) =>
         setCachedPageData(
           pageCacheKeys.kitchenChecklists,
@@ -623,9 +670,7 @@ export function KitchenChecklistPage({
     },
   ]
   const isUploadPage = mode === "upload"
-  const pageTitle = isUploadPage
-    ? "Upload Laporan"
-    : "Riwayat Laporan"
+  const pageTitle = isUploadPage ? "Upload Laporan" : "Riwayat Laporan"
 
   return (
     <DashboardShell title={pageTitle}>
@@ -646,12 +691,11 @@ export function KitchenChecklistPage({
       ) : null}
 
       <section className="pb-1">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Laporan mingguan
-          </p>
+        <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            {isUploadPage ? "Upload Laporan" : "Riwayat Laporan"}
+            {isUploadPage
+              ? "Upload Laporan Kebersihan"
+              : "Riwayat Laporan Kebersihan"}
           </h1>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
             {isUploadPage
@@ -663,293 +707,393 @@ export function KitchenChecklistPage({
 
       <section className="grid gap-6">
         {isUploadPage ? (
-        loading ? (
-          <Card className="border-border/70">
-            <CardContent className="p-5 text-sm text-muted-foreground">
-              Memeriksa laporan minggu ini...
-            </CardContent>
-          </Card>
-        ) : hasCurrentWeekReport ? (
-          <Card className="min-h-[calc(100svh-19rem)] border-border/70">
-            <CardContent className="flex min-h-[calc(100svh-19rem)] flex-col items-center justify-center gap-4 p-6 text-center">
-              <div>
-                <p className="text-base font-semibold">
-                  Laporan minggu ini sudah dikirim
+          loading ? (
+            <Card className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.05)]">
+              <CardContent className="p-5 text-sm text-muted-foreground">
+                Memeriksa laporan minggu ini...
+              </CardContent>
+            </Card>
+          ) : hasCurrentWeekReport ? (
+            <Card className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.05)]">
+              <CardContent className="flex min-h-[320px] flex-col items-center justify-center gap-4 p-6 text-center">
+                <div className="flex size-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+                  <CheckCircle2Icon className="size-6" />
+                </div>
+                <div>
+                  <p className="text-base font-semibold">
+                    Laporan minggu ini sudah dikirim
+                  </p>
+                  <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+                    Laporan dibuat pada{" "}
+                    {currentWeekReport
+                      ? new Date(currentWeekReport.timestamp).toLocaleString(
+                          "id-ID"
+                        )
+                      : "-"}
+                    . Perubahan hanya bisa dilakukan melalui riwayat.
+                  </p>
+                </div>
+                <Button
+                  asChild
+                  variant="outline"
+                  className="h-10 rounded-lg border-[#e3e7ef]"
+                >
+                  <Link to="/cleanliness-reports/history">Buka riwayat</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.05)]">
+              <CardHeader className="border-b border-[#edf0f4] p-5">
+                <CardTitle className="text-lg font-semibold tracking-tight">
+                  Upload Laporan Mingguan
+                </CardTitle>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Pilih tiga foto pemeriksaan hari ini, lalu tambahkan catatan
+                  kondisi dapur sebelum menyimpan laporan.
                 </p>
-                <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-                  Laporan dibuat pada{" "}
-                  {currentWeekReport
-                    ? new Date(currentWeekReport.timestamp).toLocaleString(
-                        "id-ID"
-                      )
-                    : "-"}
-                  . Perubahan hanya bisa dilakukan melalui riwayat.
-                </p>
-              </div>
-              <Button asChild variant="outline">
-                <Link to="/cleanliness-reports/history">Buka riwayat</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-        <Card className="border-border/70">
-          <CardHeader>
-            <CardTitle className="text-xl">Upload Laporan Mingguan</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Pilih tiga foto pemeriksaan hari ini, lalu tambahkan catatan kondisi dapur sebelum menyimpan laporan.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <form className="grid gap-5" onSubmit={handleSubmit}>
-              <div className="grid gap-5 md:grid-cols-3">
-                {photoFields.map((item, index) => {
-                  const preview = form[item.field]
-                  const meta = fileMeta[item.field]
-                  const inputId = `${item.field}-${fileInputKey}`
-                  const isProcessing = processingField === item.field
+              </CardHeader>
+              <CardContent className="p-5">
+                <form className="grid gap-5" onSubmit={handleSubmit}>
+                  <div className="grid gap-5 md:grid-cols-3">
+                    {photoFields.map((item, index) => {
+                      const preview = form[item.field]
+                      const meta = fileMeta[item.field]
+                      const inputId = `${item.field}-${fileInputKey}`
+                      const isProcessing = processingField === item.field
 
-                  return (
-                    <div
-                      key={item.field}
-                      className="flex flex-col justify-between rounded-2xl border bg-card p-5 hover-card-effect"
-                    >
-                      <div>
-                        <div className="flex items-center gap-2.5 mb-2">
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                            {index + 1}
-                          </span>
-                          <h3 className="text-sm font-semibold text-foreground leading-none">
-                            {item.label}
-                          </h3>
-                        </div>
-                        <p className="text-xs text-muted-foreground leading-relaxed min-h-[36px] mb-4">
-                          {item.helper}
-                        </p>
-                      </div>
-
-                      <input
-                        id={inputId}
-                        key={inputId}
-                        className="hidden"
-                        type="file"
-                        accept="image/*"
-                        onChange={(event) => void handlePhotoChange(item.field, event)}
-                      />
-
-                      <div className="relative group overflow-hidden rounded-xl border bg-muted/40 aspect-[4/3] flex items-center justify-center">
-                        {preview ? (
-                          <>
-                            <img
-                              src={preview}
-                              alt={item.label}
-                              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                            />
-                            <label
-                              htmlFor={inputId}
-                              className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center gap-1.5 text-white transition-opacity duration-200 cursor-pointer"
-                            >
-                              <CameraIcon className="size-5 animate-pulse" />
-                              <span className="text-xs font-medium">Ubah foto</span>
-                            </label>
-                          </>
-                        ) : (
-                          <label
-                            htmlFor={inputId}
-                            className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground cursor-pointer hover:bg-muted/60 transition-colors"
-                          >
-                            <div className="rounded-full bg-background p-2.5 shadow-xs">
-                              <CameraIcon className="size-5 text-muted-foreground" />
+                      return (
+                        <div
+                          key={item.field}
+                          className="flex flex-col justify-between rounded-xl border border-[#e9edf4] bg-white p-4"
+                        >
+                          <div>
+                            <div className="mb-2 flex items-center gap-2.5">
+                              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#eef2ff] text-xs font-semibold text-[#0528f2]">
+                                {index + 1}
+                              </span>
+                              <h3 className="text-sm leading-none font-semibold">
+                                {item.label}
+                              </h3>
                             </div>
-                            <span className="text-xs font-medium text-center px-2">
-                              {isProcessing ? "Menyiapkan foto..." : "Pilih foto"}
-                            </span>
-                          </label>
-                        )}
-                      </div>
-
-                      <div className="mt-4 space-y-3">
-                        <div className={`rounded-xl p-3 text-xs flex items-start gap-2 ${
-                          meta
-                            ? "bg-emerald-500/10 text-emerald-800 dark:text-emerald-300 border border-emerald-500/20"
-                            : "bg-muted/50 text-muted-foreground border border-transparent"
-                        }`}>
-                          {meta ? (
-                            <CheckCircle2Icon className="size-4 text-emerald-500 shrink-0 mt-0.5" />
-                          ) : (
-                            <ImageUpIcon className="size-4 shrink-0 mt-0.5" />
-                          )}
-                          <div className="overflow-hidden">
-                            <p className="truncate font-medium">
-                              {meta?.name ?? "Belum ada foto"}
-                            </p>
-                            <p className="mt-0.5 text-[10px] opacity-80">
-                              {meta
-                                ? `${meta.sizeLabel} - ${meta.dimensions}`
-                                : "Foto akan disiapkan otomatis"}
+                            <p className="mb-4 min-h-[36px] text-xs leading-relaxed text-muted-foreground">
+                              {item.helper}
                             </p>
                           </div>
-                        </div>
 
-                        <div className="flex gap-2">
-                          <Button asChild variant="outline" size="sm" className="flex-1 cursor-pointer">
-                            <label htmlFor={inputId} className="w-full flex items-center justify-center gap-1 cursor-pointer">
-                              <UploadIcon className="size-3.5" />
-                              <span>{preview ? "Ganti" : "Pilih"}</span>
-                            </label>
-                          </Button>
-                          {preview && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => clearPhoto(item.field)}
-                              className="px-2.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          <input
+                            id={inputId}
+                            key={inputId}
+                            className="hidden"
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) =>
+                              void handlePhotoChange(item.field, event)
+                            }
+                          />
+
+                          <div className="group relative flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg border border-[#e3e7ef] bg-[#f8fafc]">
+                            {preview ? (
+                              <>
+                                <img
+                                  src={preview}
+                                  alt={item.label}
+                                  className="h-full w-full object-cover"
+                                />
+                                <label
+                                  htmlFor={inputId}
+                                  className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-1.5 bg-slate-950/45 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                                >
+                                  <CameraIcon className="size-5" />
+                                  <span className="text-xs font-medium">
+                                    Ubah foto
+                                  </span>
+                                </label>
+                              </>
+                            ) : (
+                              <label
+                                htmlFor={inputId}
+                                className="absolute inset-0 flex cursor-pointer flex-col items-center justify-center gap-2 text-muted-foreground transition-colors hover:bg-[#f1f5f9] hover:text-slate-950"
+                              >
+                                <div className="rounded-full border border-[#e3e7ef] bg-white p-2.5">
+                                  <CameraIcon className="size-5 text-muted-foreground" />
+                                </div>
+                                <span className="px-2 text-center text-xs font-medium">
+                                  {isProcessing
+                                    ? "Menyiapkan foto..."
+                                    : "Pilih foto"}
+                                </span>
+                              </label>
+                            )}
+                          </div>
+
+                          <div className="mt-4 space-y-3">
+                            <div
+                              className={`flex items-start gap-2 rounded-xl p-3 text-xs ${
+                                meta
+                                  ? "border border-emerald-100 bg-emerald-50 text-emerald-700"
+                                  : "border border-[#edf0f4] bg-[#f8fafc] text-muted-foreground"
+                              }`}
                             >
-                              <Trash2Icon className="size-4" />
-                            </Button>
-                          )}
+                              {meta ? (
+                                <CheckCircle2Icon className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+                              ) : (
+                                <ImageUpIcon className="mt-0.5 size-4 shrink-0" />
+                              )}
+                              <div className="overflow-hidden">
+                                <p className="truncate font-medium">
+                                  {meta?.name ?? "Belum ada foto"}
+                                </p>
+                                <p className="mt-0.5 text-[10px] opacity-80">
+                                  {meta
+                                    ? `${meta.sizeLabel} - ${meta.dimensions}`
+                                    : "Foto akan disiapkan otomatis"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex gap-2">
+                              <Button
+                                asChild
+                                variant="outline"
+                                size="sm"
+                                className="flex-1 cursor-pointer rounded-lg border-[#e3e7ef]"
+                              >
+                                <label
+                                  htmlFor={inputId}
+                                  className="flex w-full cursor-pointer items-center justify-center gap-1"
+                                >
+                                  <UploadIcon className="size-3.5" />
+                                  <span>{preview ? "Ganti" : "Pilih"}</span>
+                                </label>
+                              </Button>
+                              {preview && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => clearPhoto(item.field)}
+                                  className="px-2.5 text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                                >
+                                  <Trash2Icon className="size-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+                      )
+                    })}
+                  </div>
 
-              <div className="rounded-2xl border border-primary/10 bg-primary/5 p-4 text-xs leading-relaxed text-muted-foreground flex items-start gap-2.5">
-                  <ShieldCheckIcon className="size-5 text-primary shrink-0 mt-0.5" />
-                  <p>
-                    <strong>Panduan Pemeriksaan:</strong> Pastikan foto menampilkan kondisi nyata di hari pemeriksaan dengan pencahayaan yang cukup. Tanggal laporan otomatis memakai waktu saat tombol simpan ditekan.
-                  </p>
-              </div>
+                  <div className="flex items-start gap-2.5 rounded-xl border border-[#e3e7ef] bg-[#f8fafc] p-4 text-xs leading-relaxed text-muted-foreground">
+                    <ShieldCheckIcon className="mt-0.5 size-5 shrink-0 text-[#0528f2]" />
+                    <p>
+                      <strong>Panduan Pemeriksaan:</strong> Pastikan foto
+                      menampilkan kondisi nyata di hari pemeriksaan dengan
+                      pencahayaan yang cukup. Tanggal laporan otomatis memakai
+                      waktu saat tombol simpan ditekan.
+                    </p>
+                  </div>
 
-              <label className="grid gap-2 text-sm font-medium">
-                Kondisi dapur
-                <textarea
-                  className="min-h-32 rounded-xl border border-input bg-background px-3 py-3 text-sm shadow-xs outline-none input-focus-effect"
-                  placeholder="Contoh: APD lengkap, alat bersih dan tersusun, area produksi sudah disanitasi sebelum proses dimulai."
-                  value={form.kondisiDapur}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      kondisiDapur: event.target.value,
-                    }))
-                  }
-                />
-              </label>
+                  <label className="grid gap-2 text-sm font-medium">
+                    Kondisi dapur
+                    <textarea
+                      className="min-h-32 rounded-xl border border-[#e3e7ef] bg-white px-3 py-3 text-sm transition-colors outline-none focus:border-[#0528f2] focus:ring-3 focus:ring-[#0528f2]/15"
+                      placeholder="Contoh: APD lengkap, alat bersih dan tersusun, area produksi sudah disanitasi sebelum proses dimulai."
+                      value={form.kondisiDapur}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          kondisiDapur: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
 
-              <Button disabled={submitting || Boolean(processingField)} type="submit" className="w-full h-11 rounded-xl shadow-xs hover:shadow-md transition-all">
-                {submitting ? "Menyimpan laporan..." : "Simpan laporan"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-        )
+                  <Button
+                    disabled={submitting || Boolean(processingField)}
+                    type="submit"
+                    className="h-11 w-full rounded-xl bg-[#0528f2] text-white shadow-xs transition-all hover:bg-[#0422c8]"
+                  >
+                    {submitting ? "Menyimpan laporan..." : "Simpan laporan"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          )
         ) : null}
 
         {!isUploadPage ? (
-        <section className="rounded-lg border bg-card text-card-foreground">
-          <div className="border-b p-4">
-            <h2 className="text-lg font-semibold">Riwayat Laporan</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="px-4 py-3 font-medium">Tanggal</th>
-                  <th className="px-4 py-3 font-medium">Kondisi dapur</th>
-                  <th className="px-4 py-3 font-medium">Foto</th>
-                  <th className="px-4 py-3 text-right font-medium">Aksi</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading
-                  ? Array.from({ length: 4 }).map((_, index) => (
-                      <tr key={index} className="border-b last:border-0">
-                        <td className="px-4 py-3">
-                          <Skeleton className="h-4 w-32" />
-                        </td>
-                        <td className="px-4 py-3">
-                          <Skeleton className="h-4 w-64" />
-                        </td>
-                        <td className="px-4 py-3">
-                          <Skeleton className="h-4 w-16" />
-                        </td>
-                        <td className="px-4 py-3">
-                          <Skeleton className="ml-auto h-8 w-32" />
-                        </td>
-                      </tr>
-                    ))
-                  : null}
-
-                {!loading && checklists.length === 0 ? (
-                  <tr>
-                    <td
-                      colSpan={4}
-                      className="px-4 py-8 text-center text-muted-foreground"
-                    >
-                      Belum ada laporan kebersihan yang tersimpan.
-                    </td>
+          <section className="overflow-hidden rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.05)]">
+            <div className="flex flex-col gap-2 border-b border-[#edf0f4] p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="flex items-center gap-1">
+                  <h2 className="text-lg font-semibold tracking-tight">
+                    Riwayat laporan
+                  </h2>
+                  <span className="text-lg font-semibold text-muted-foreground">
+                    {loading ? "..." : checklists.length}
+                  </span>
+                </div>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Dokumentasi kebersihan dapur yang sudah tersimpan.
+                </p>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[860px] text-sm">
+                <thead>
+                  <tr className="border-b border-[#edf0f4] bg-[#fcfcfd] text-left text-xs text-muted-foreground">
+                    <th className="px-5 py-3 font-medium">Tanggal</th>
+                    <th className="px-5 py-3 font-medium">Kondisi dapur</th>
+                    <th className="px-5 py-3 font-medium">Foto</th>
+                    <th className="px-5 py-3 text-right font-medium">Aksi</th>
                   </tr>
-                ) : null}
+                </thead>
+                <tbody>
+                  {loading
+                    ? Array.from({ length: 4 }).map((_, index) => (
+                        <tr key={index} className="border-b border-[#edf0f4]">
+                          <td className="px-5 py-4">
+                            <Skeleton className="h-4 w-32" />
+                          </td>
+                          <td className="px-5 py-4">
+                            <Skeleton className="h-4 w-64" />
+                          </td>
+                          <td className="px-5 py-4">
+                            <Skeleton className="h-6 w-20 rounded-full" />
+                          </td>
+                          <td className="px-5 py-4">
+                            <Skeleton className="ml-auto h-8 w-32" />
+                          </td>
+                        </tr>
+                      ))
+                    : null}
 
-                {!loading
-                  ? checklists.map((item) => (
-                      <tr key={item.id} className="border-b last:border-0">
-                        <td className="px-4 py-3">
-                          <p className="font-medium">
-                            {new Date(item.timestamp).toLocaleDateString("id-ID")}
-                          </p>
-                          <p className="mt-0.5 text-xs text-muted-foreground">
-                            {new Date(item.timestamp).toLocaleTimeString("id-ID")}
-                          </p>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground">
-                          <p className="line-clamp-2">{item.kondisiDapur}</p>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="inline-flex rounded-full border bg-muted/30 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                            3 foto
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setViewTarget(item)}
-                            >
-                              <EyeIcon className="mr-1 h-4 w-4" />
-                              View
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => openEditReport(item)}
-                            >
-                              <PencilIcon className="mr-1 h-4 w-4" />
-                              Edit
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                              onClick={() => setDeleteTarget(item)}
-                            >
-                              <Trash2Icon className="mr-1 h-4 w-4" />
-                              Delete
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  : null}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                  {!loading && checklists.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="px-5 py-10 text-center text-muted-foreground"
+                      >
+                        Belum ada laporan kebersihan yang tersimpan.
+                      </td>
+                    </tr>
+                  ) : null}
+
+                  {!loading
+                    ? paginatedChecklists.map((item) => (
+                        <tr
+                          key={item.id}
+                          className="border-b border-[#edf0f4] last:border-0 hover:bg-[#fcfcfd]"
+                        >
+                          <td className="px-5 py-4">
+                            <p className="font-semibold">
+                              {new Date(item.timestamp).toLocaleDateString(
+                                "id-ID"
+                              )}
+                            </p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {new Date(item.timestamp).toLocaleTimeString(
+                                "id-ID"
+                              )}
+                            </p>
+                          </td>
+                          <td className="px-5 py-4 text-muted-foreground">
+                            <p className="line-clamp-2">{item.kondisiDapur}</p>
+                          </td>
+                          <td className="px-5 py-4">
+                            <span className="inline-flex rounded-full bg-[#eef2ff] px-2.5 py-1 text-xs font-semibold text-[#0528f2] ring-1 ring-[#dbe3ff]">
+                              3 foto
+                            </span>
+                          </td>
+                          <td className="px-5 py-4">
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="rounded-lg border-[#e3e7ef]"
+                                onClick={() => setViewTarget(item)}
+                              >
+                                <EyeIcon className="mr-1 h-4 w-4" />
+                                Lihat
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="rounded-lg border-[#e3e7ef]"
+                                onClick={() => openEditReport(item)}
+                              >
+                                <PencilIcon className="mr-1 h-4 w-4" />
+                                Edit
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="rounded-lg border-red-100 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                onClick={() => setDeleteTarget(item)}
+                              >
+                                <Trash2Icon className="mr-1 h-4 w-4" />
+                                Hapus
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    : null}
+                </tbody>
+              </table>
+            </div>
+            {!loading && checklists.length > CHECKLISTS_PER_PAGE ? (
+              <div className="flex items-center justify-center gap-2 border-t border-[#edf0f4] p-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  disabled={currentPage <= 1}
+                  onClick={() =>
+                    setCurrentPage((page) => Math.max(1, page - 1))
+                  }
+                >
+                  <ChevronLeftIcon />
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }).map((_, index) => {
+                    const page = index + 1
+
+                    return (
+                      <button
+                        key={page}
+                        type="button"
+                        className={
+                          currentPage === page
+                            ? "flex size-8 items-center justify-center rounded-lg bg-[#f3f4f6] text-sm font-semibold"
+                            : "flex size-8 items-center justify-center rounded-lg text-sm text-muted-foreground hover:bg-[#f7f8fb]"
+                        }
+                        onClick={() => setCurrentPage(page)}
+                      >
+                        {page}
+                      </button>
+                    )
+                  })}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  disabled={currentPage >= totalPages}
+                  onClick={() =>
+                    setCurrentPage((page) => Math.min(totalPages, page + 1))
+                  }
+                >
+                  <ChevronRightIcon />
+                </Button>
+              </div>
+            ) : null}
+          </section>
         ) : null}
       </section>
 
@@ -1008,7 +1152,7 @@ export function KitchenChecklistPage({
                         <div className="border-t px-3 py-2 text-xs text-muted-foreground">
                           {isProcessing
                             ? "Menyiapkan foto..."
-                            : meta?.name ?? "Ganti foto"}
+                            : (meta?.name ?? "Ganti foto")}
                         </div>
                       </label>
                     </div>
@@ -1019,7 +1163,7 @@ export function KitchenChecklistPage({
               <label className="grid gap-2 text-sm font-medium">
                 Kondisi dapur
                 <textarea
-                  className="min-h-28 rounded-xl border border-input bg-background px-3 py-3 text-sm shadow-xs outline-none input-focus-effect"
+                  className="input-focus-effect min-h-28 rounded-xl border border-input bg-background px-3 py-3 text-sm shadow-xs outline-none"
                   value={editForm.kondisiDapur}
                   onChange={(event) =>
                     setEditForm((current) => ({
@@ -1088,11 +1232,12 @@ export function KitchenChecklistPage({
                 <p className="text-xs font-semibold text-muted-foreground">
                   Kondisi dapur
                 </p>
-                <p className="mt-2 text-sm leading-6">{viewTarget.kondisiDapur}</p>
+                <p className="mt-2 text-sm leading-6">
+                  {viewTarget.kondisiDapur}
+                </p>
               </div>
             </div>
           ) : null}
-
         </DialogContent>
       </Dialog>
 
@@ -1104,36 +1249,40 @@ export function KitchenChecklistPage({
         />
       ) : null}
 
-      {false && zoomPhoto ? createPortal(
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm pointer-events-auto"
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={() => setZoomPhoto(null)}
-        >
-          <div
-            className="relative flex max-h-[95svh] h-[95svh] w-[95vw] flex-col overflow-hidden rounded-xl bg-popover p-3 shadow-lg"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="absolute right-2 top-2 z-10 bg-background/80"
+      {false && zoomPhoto
+        ? createPortal(
+            <div
+              className="pointer-events-auto fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+              onPointerDown={(event) => event.stopPropagation()}
               onClick={() => setZoomPhoto(null)}
             >
-              ×
-            </Button>
-            <p className="mb-2 pr-10 text-sm font-medium">{zoomPhoto?.label}</p>
-            <img
-              src={zoomPhoto?.url}
-              alt={zoomPhoto?.label}
-              className="h-full w-full rounded-lg object-contain"
-            />
-          </div>
-        </div>,
-        document.body
-      ) : null}
+              <div
+                className="relative flex h-[95svh] max-h-[95svh] w-[95vw] flex-col overflow-hidden rounded-xl bg-popover p-3 shadow-lg"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="absolute top-2 right-2 z-10 bg-background/80"
+                  onClick={() => setZoomPhoto(null)}
+                >
+                  ×
+                </Button>
+                <p className="mb-2 pr-10 text-sm font-medium">
+                  {zoomPhoto?.label}
+                </p>
+                <img
+                  src={zoomPhoto?.url}
+                  alt={zoomPhoto?.label}
+                  className="h-full w-full rounded-lg object-contain"
+                />
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
 
       <AlertDialog
         open={Boolean(deleteTarget)}
@@ -1150,7 +1299,9 @@ export function KitchenChecklistPage({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleteSubmitting}>Batal</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleteSubmitting}>
+              Batal
+            </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={deleteSubmitting}

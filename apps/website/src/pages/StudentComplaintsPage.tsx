@@ -23,8 +23,13 @@ import {
   setCachedPageData,
 } from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
-import { CalendarIcon, ClockIcon } from "lucide-react"
-import { useCallback, useEffect, useState, type FormEvent } from "react"
+import {
+  CalendarIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  ClockIcon,
+} from "lucide-react"
+import { useEffect, useState, type FormEvent } from "react"
 
 function getCurrentDateTimeLocal() {
   const now = new Date()
@@ -98,6 +103,8 @@ function mapSchoolDistributionsToBatches(
   return Array.from(batchById.values())
 }
 
+const COMPLAINTS_PER_PAGE = 10
+
 export function StudentComplaintsPage({
   mode = "create",
 }: {
@@ -112,89 +119,114 @@ export function StudentComplaintsPage({
     cachedComplaints ?? []
   )
   const [batches, setBatches] = useState<BatchSummary[]>(cachedBatches ?? [])
-  const [schools, setSchools] = useState<SchoolAccount[]>(() =>
-    getCachedPageData<SchoolAccount[]>(pageCacheKeys.schoolAccounts) ?? []
+  const [schools, setSchools] = useState<SchoolAccount[]>(
+    () => getCachedPageData<SchoolAccount[]>(pageCacheKeys.schoolAccounts) ?? []
   )
   const [loading, setLoading] = useState(!cachedComplaints)
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
   const [form, setForm] = useState(initialForm)
-  const selectableBatches = batches
-
-  const loadData = useCallback(async (force = false) => {
-    let usedCache = false
-
-    if (!force) {
-      const complaintsCache = getCachedPageData<StudentComplaint[]>(
-        pageCacheKeys.studentComplaints
-      )
-      const batchesCache = getCachedPageData<BatchSummary[]>(
-        pageCacheKeys.batches
-      )
-
-      if (complaintsCache) {
-        setComplaints(complaintsCache)
-        setBatches(batchesCache ?? [])
-        setLoading(false)
-        usedCache = true
-      }
-    }
-
-    if (!usedCache) setLoading(true)
-    setError(null)
-
-    try {
-      const [complaintsResponse, batchesResponse, schoolsResponse] = await Promise.allSettled([
-        api.studentComplaints.list(),
-        profile?.role === "SEKOLAH"
-          ? api.schoolDistributions.list().then((response) => ({
-              data: mapSchoolDistributionsToBatches(response.distributions),
-            })).catch(() => api.batches.list())
-          : api.batches.list(),
-        profile?.role === "SEKOLAH"
-          ? Promise.resolve({ schools: [] as SchoolAccount[] })
-          : api.schoolAccounts.list(),
-      ])
-
-      if (complaintsResponse.status === "fulfilled") {
-        setComplaints(
-          setCachedPageData(
-            pageCacheKeys.studentComplaints,
-            complaintsResponse.value.data
-          )
-        )
-      } else if (!usedCache) {
-        throw complaintsResponse.reason
-      }
-
-      if (batchesResponse.status === "fulfilled") {
-        setBatches(
-          setCachedPageData(pageCacheKeys.batches, batchesResponse.value.data)
-        )
-      } else {
-        setBatches([])
-      }
-
-      if (schoolsResponse.status === "fulfilled" && schoolsResponse.value.schools.length) {
-        setSchools(
-          setCachedPageData(pageCacheKeys.schoolAccounts, schoolsResponse.value.schools)
-        )
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan.")
-    } finally {
-      setLoading(false)
-    }
-  }, [profile])
+  const selectableBatches = batches.filter((batch) =>
+    ["DITERIMA", "DITOLAK", "SELESAI"].includes(batch.status)
+  )
+  const totalPages = Math.max(
+    1,
+    Math.ceil(complaints.length / COMPLAINTS_PER_PAGE)
+  )
+  const activePage = Math.min(currentPage, totalPages)
+  const paginatedComplaints = complaints.slice(
+    (activePage - 1) * COMPLAINTS_PER_PAGE,
+    activePage * COMPLAINTS_PER_PAGE
+  )
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
+      let usedCache = false
+
+      async function loadData() {
+        const complaintsCache = getCachedPageData<StudentComplaint[]>(
+          pageCacheKeys.studentComplaints
+        )
+        const batchesCache = getCachedPageData<BatchSummary[]>(
+          pageCacheKeys.batches
+        )
+
+        if (complaintsCache) {
+          setComplaints(complaintsCache)
+          setBatches(batchesCache ?? [])
+          setLoading(false)
+          usedCache = true
+        }
+
+        if (!usedCache) setLoading(true)
+        setError(null)
+
+        try {
+          const [complaintsResponse, batchesResponse, schoolsResponse] =
+            await Promise.allSettled([
+              api.studentComplaints.list(),
+              profile?.role === "SEKOLAH"
+                ? api.schoolDistributions
+                    .list()
+                    .then((response) => ({
+                      data: mapSchoolDistributionsToBatches(
+                        response.distributions
+                      ),
+                    }))
+                    .catch(() => api.batches.list())
+                : api.batches.list(),
+              profile?.role === "SEKOLAH"
+                ? Promise.resolve({ schools: [] as SchoolAccount[] })
+                : api.schoolAccounts.list(),
+            ])
+
+          if (complaintsResponse.status === "fulfilled") {
+            setComplaints(
+              setCachedPageData(
+                pageCacheKeys.studentComplaints,
+                complaintsResponse.value.data
+              )
+            )
+          } else if (!usedCache) {
+            throw complaintsResponse.reason
+          }
+
+          if (batchesResponse.status === "fulfilled") {
+            setBatches(
+              setCachedPageData(
+                pageCacheKeys.batches,
+                batchesResponse.value.data
+              )
+            )
+          } else {
+            setBatches([])
+          }
+
+          if (
+            schoolsResponse.status === "fulfilled" &&
+            schoolsResponse.value.schools.length
+          ) {
+            setSchools(
+              setCachedPageData(
+                pageCacheKeys.schoolAccounts,
+                schoolsResponse.value.schools
+              )
+            )
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Terjadi kesalahan.")
+        } finally {
+          setLoading(false)
+        }
+      }
+
       void loadData()
     }, 0)
 
     return () => window.clearTimeout(timer)
-  }, [loadData])
+  }, [profile?.role])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -230,6 +262,7 @@ export function StudentComplaintsPage({
           ...currentComplaints,
         ])
       )
+      setCurrentPage(1)
 
       const dashboardCache = getCachedPageData<DashboardAnalytics>(
         pageCacheKeys.dashboardAnalytics
@@ -257,9 +290,6 @@ export function StudentComplaintsPage({
   const isCreatePage = mode === "create"
   const showSchoolReporter = profile?.role !== "SEKOLAH"
   const pageTitle = isCreatePage ? "Buat Keluhan Siswa" : "Riwayat Keluhan"
-  const historyGridClass = showSchoolReporter
-    ? "md:grid-cols-[0.9fr_0.8fr_0.55fr_1.2fr_1.2fr_0.7fr]"
-    : "md:grid-cols-[0.9fr_0.55fr_1.2fr_1.2fr_0.7fr]"
   const reporterNameById = new Map(
     schools.flatMap((school) => [
       [school.id, school.account?.username ?? school.name] as const,
@@ -296,10 +326,7 @@ export function StudentComplaintsPage({
       ) : null}
 
       <section className="pb-1">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Keluhan siswa
-          </p>
+        <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             {isCreatePage ? "Buat Keluhan Siswa" : "Riwayat Keluhan Siswa"}
           </h1>
@@ -313,225 +340,311 @@ export function StudentComplaintsPage({
 
       <section className="grid gap-6">
         {isCreatePage ? (
-        <Card className="border-border/70 bg-card">
-          <CardHeader>
-            <CardTitle className="text-xl">Laporkan Keluhan Siswa</CardTitle>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Formulir pelaporan dampak pascakonsumsi untuk melacak penanganan dan mitigasi risiko.
-            </p>
-          </CardHeader>
-          <CardContent>
-            <form className="grid gap-4" onSubmit={handleSubmit}>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-2 text-sm font-semibold">
-                  Jumlah Siswa Terdampak
-                  <input
-                    className="h-11 rounded-xl border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 font-medium"
-                    type="number"
-                    min={1}
-                    value={form.jumlahSiswa}
+          <Card className="overflow-hidden rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.05)]">
+            <CardHeader className="border-b border-[#edf0f4] px-5 py-4">
+              <CardTitle className="text-base font-semibold text-[#111827]">
+                Detail Keluhan
+              </CardTitle>
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                Isi jumlah siswa, waktu kejadian, gejala, dan tindakan awal.
+              </p>
+            </CardHeader>
+            <CardContent className="p-5">
+              <form className="grid gap-4" onSubmit={handleSubmit}>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="grid gap-2 text-sm font-semibold text-[#111827]">
+                    Jumlah Siswa Terdampak
+                    <input
+                      className="h-11 rounded-xl border border-[#e3e7ef] bg-white px-3 text-sm font-medium shadow-xs outline-none focus-visible:border-[#0528f2] focus-visible:ring-2 focus-visible:ring-[#0528f2]/10"
+                      type="number"
+                      min={1}
+                      value={form.jumlahSiswa}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          jumlahSiswa: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+
+                  <div className="grid gap-2 text-sm font-semibold text-[#111827]">
+                    Waktu Kejadian
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-11 justify-start rounded-xl border-[#e3e7ef] px-3 text-left text-sm font-medium shadow-xs hover:bg-[#f8fafc]"
+                        >
+                          <CalendarIcon className="size-4 text-muted-foreground" />
+                          <span>{formatDateTimeLabel(form.waktuKejadian)}</span>
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-80 p-3">
+                        <Calendar
+                          selected={parseDateTimeLocal(form.waktuKejadian)}
+                          onSelect={(date) =>
+                            setForm((current) => ({
+                              ...current,
+                              waktuKejadian: updateDatePart(
+                                current.waktuKejadian,
+                                date
+                              ),
+                            }))
+                          }
+                        />
+                        <label className="mt-3 grid gap-2 border-t pt-3 text-sm font-medium text-[#111827]">
+                          <span className="inline-flex items-center gap-2">
+                            <ClockIcon className="size-4 text-muted-foreground" />
+                            Jam kejadian
+                          </span>
+                          <input
+                            className="h-10 rounded-lg border border-[#e3e7ef] bg-white px-3 text-sm shadow-xs outline-none focus-visible:border-[#0528f2] focus-visible:ring-2 focus-visible:ring-[#0528f2]/10"
+                            type="time"
+                            value={form.waktuKejadian.slice(11, 16)}
+                            onChange={(event) =>
+                              setForm((current) => ({
+                                ...current,
+                                waktuKejadian: updateTimePart(
+                                  current.waktuKejadian,
+                                  event.target.value
+                                ),
+                              }))
+                            }
+                          />
+                        </label>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+
+                <label className="grid gap-2 text-sm font-semibold text-[#111827]">
+                  Batch Terkait
+                  <select
+                    className="h-11 rounded-xl border border-[#e3e7ef] bg-white px-3 text-sm shadow-xs outline-none focus-visible:border-[#0528f2] focus-visible:ring-2 focus-visible:ring-[#0528f2]/10"
+                    value={form.batchId}
                     onChange={(event) =>
                       setForm((current) => ({
                         ...current,
-                        jumlahSiswa: event.target.value,
+                        batchId: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Pilih nanti / tidak diketahui</option>
+                    {selectableBatches.map((batch) => (
+                      <option key={batch.id} value={batch.id}>
+                        {batch.batchIdUnik} - {batch.namaMenu}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="grid gap-2 text-sm font-semibold text-[#111827]">
+                  Gejala yang Dirasakan
+                  <textarea
+                    className="min-h-24 rounded-xl border border-[#e3e7ef] bg-white px-3 py-3 text-sm shadow-xs outline-none focus-visible:border-[#0528f2] focus-visible:ring-2 focus-visible:ring-[#0528f2]/10"
+                    placeholder="Contoh: Mual, sakit perut melilit, pusing kepala, muntah-muntah ringan."
+                    value={form.gejala}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        gejala: event.target.value,
                       }))
                     }
                   />
                 </label>
 
-                <div className="grid gap-2 text-sm font-semibold">
-                  Waktu Kejadian
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-11 justify-start rounded-xl px-3 text-left text-sm font-medium shadow-xs"
-                      >
-                        <CalendarIcon className="size-4 text-muted-foreground" />
-                        <span>{formatDateTimeLabel(form.waktuKejadian)}</span>
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent align="start" className="w-80 p-3">
-                      <Calendar
-                        selected={parseDateTimeLocal(form.waktuKejadian)}
-                        onSelect={(date) =>
-                          setForm((current) => ({
-                            ...current,
-                            waktuKejadian: updateDatePart(
-                              current.waktuKejadian,
-                              date
-                            ),
-                          }))
-                        }
-                      />
-                      <label className="mt-3 grid gap-2 border-t pt-3 text-sm font-medium">
-                        <span className="inline-flex items-center gap-2">
-                          <ClockIcon className="size-4 text-muted-foreground" />
-                          Jam kejadian
-                        </span>
-                        <input
-                          className="h-10 rounded-lg border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                          type="time"
-                          value={form.waktuKejadian.slice(11, 16)}
-                          onChange={(event) =>
-                            setForm((current) => ({
-                              ...current,
-                              waktuKejadian: updateTimePart(
-                                current.waktuKejadian,
-                                event.target.value
-                              ),
-                            }))
-                          }
-                        />
-                      </label>
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
+                <label className="grid gap-2 text-sm font-semibold text-[#111827]">
+                  Tindakan Awal Medis
+                  <textarea
+                    className="min-h-24 rounded-xl border border-[#e3e7ef] bg-white px-3 py-3 text-sm shadow-xs outline-none focus-visible:border-[#0528f2] focus-visible:ring-2 focus-visible:ring-[#0528f2]/10"
+                    placeholder="Contoh: Observasi di UKS sekolah, pemberian air kelapa/susu hangat, merujuk 3 siswa ke puskesmas terdekat."
+                    value={form.tindakan}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        tindakan: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
 
-              <label className="grid gap-2 text-sm font-semibold">
-                Batch Terkait
-                <select
-                  className="h-11 rounded-xl border border-input bg-background px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  value={form.batchId}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      batchId: event.target.value,
-                    }))
-                  }
+                <Button
+                  disabled={submitting}
+                  type="submit"
+                  className="h-11 w-full rounded-xl bg-[#0528f2] text-white shadow-xs transition-all hover:bg-[#0422c8] hover:shadow-md"
                 >
-                  <option value="">Pilih nanti / tidak diketahui</option>
-                  {selectableBatches.map((batch) => (
-                    <option key={batch.id} value={batch.id}>
-                      {batch.batchIdUnik} - {batch.namaMenu} ({batch.status})
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="grid gap-2 text-sm font-semibold">
-                Gejala yang Dirasakan
-                <textarea
-                  className="min-h-24 rounded-xl border border-input bg-background px-3 py-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  placeholder="Contoh: Mual, sakit perut melilit, pusing kepala, muntah-muntah ringan."
-                  value={form.gejala}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      gejala: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-
-              <label className="grid gap-2 text-sm font-semibold">
-                Tindakan Awal Medis
-                <textarea
-                  className="min-h-24 rounded-xl border border-input bg-background px-3 py-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                  placeholder="Contoh: Observasi di UKS sekolah, pemberian air kelapa/susu hangat, merujuk 3 siswa ke puskesmas terdekat."
-                  value={form.tindakan}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      tindakan: event.target.value,
-                    }))
-                  }
-                />
-              </label>
-
-              <Button disabled={submitting} type="submit" className="w-full h-11 rounded-xl shadow-xs hover:shadow-md transition-all">
-                {submitting ? "Menyimpan Keluhan..." : "Simpan Laporan Keluhan"}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+                  {submitting
+                    ? "Menyimpan Keluhan..."
+                    : "Simpan Laporan Keluhan"}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
         ) : null}
 
         {!isCreatePage ? (
-        <Card className="border-border/70 bg-card">
-          <CardHeader>
-            <CardTitle className="text-xl">Riwayat Keluhan</CardTitle>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Pantau laporan keluhan siswa yang terdata di sekolah ini untuk monitoring tindak lanjut medis.
-            </p>
-          </CardHeader>
-          <CardContent className="grid gap-4">
-            {loading ? (
-              <div className="overflow-hidden rounded-xl border">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <div
-                    key={index}
-                    className={`grid gap-3 border-b p-4 last:border-0 ${historyGridClass}`}
-                  >
-                    <Skeleton className="h-5 w-32" />
-                    {showSchoolReporter ? <Skeleton className="h-5 w-32" /> : null}
-                    <Skeleton className="h-5 w-16" />
-                    <Skeleton className="h-5 w-full" />
-                    <Skeleton className="h-5 w-full" />
-                    <Skeleton className="h-5 w-24" />
-                  </div>
-                ))}
+          <section className="overflow-hidden rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.05)]">
+            <div className="flex flex-col gap-1 border-b border-[#edf0f4] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-base font-semibold text-[#111827]">
+                  Riwayat Keluhan
+                </h2>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  Pantau laporan keluhan siswa untuk monitoring tindak lanjut
+                  medis.
+                </p>
               </div>
-            ) : null}
+              <span className="w-fit rounded-full border border-[#e5e7eb] bg-[#f8fafc] px-3 py-1 text-xs font-semibold text-[#4b5563]">
+                {complaints.length} keluhan
+              </span>
+            </div>
 
-            {!loading && complaints.length === 0 ? (
-              <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-                Belum ada keluhan siswa yang tercatat.
-              </div>
-            ) : null}
-
-            {!loading && complaints.length > 0 ? (
-              <div className="overflow-hidden rounded-xl border">
-                <div className={`hidden gap-3 border-b bg-muted/40 px-4 py-3 text-xs font-semibold text-muted-foreground md:grid ${historyGridClass}`}>
-                  <span>Waktu</span>
-                  {showSchoolReporter ? <span>Sekolah Pelapor</span> : null}
-                  <span>Siswa</span>
-                  <span>Gejala</span>
-                  <span>Tindakan</span>
-                  <span>Batch</span>
-                </div>
-                {complaints.map((complaint) => (
-                  <div
-                    key={complaint.id}
-                    className={`grid gap-3 border-b p-4 last:border-0 md:items-center ${historyGridClass}`}
-                  >
-                    <div>
-                      <p className="text-sm font-medium">
-                        {new Date(complaint.waktuKejadian).toLocaleDateString(
-                          "id-ID"
-                        )}
-                      </p>
-                      <p className="mt-0.5 text-xs text-muted-foreground">
-                        {new Date(complaint.waktuKejadian).toLocaleTimeString(
-                          "id-ID"
-                        )}
-                      </p>
-                    </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-190 text-sm">
+                <thead>
+                  <tr className="border-b border-[#edf0f4] bg-[#fcfcfd] text-left text-xs tracking-wide text-muted-foreground uppercase">
+                    <th className="px-5 py-3 font-semibold">Waktu</th>
                     {showSchoolReporter ? (
-                      <span className="text-sm font-medium">
-                        {getReporterName(complaint)}
-                      </span>
+                      <th className="px-5 py-3 font-semibold">
+                        Sekolah Pelapor
+                      </th>
                     ) : null}
-                    <span className="inline-flex w-fit rounded-full border bg-rose-500/10 px-2.5 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300">
-                      {complaint.jumlahSiswa}
-                    </span>
-                    <p className="line-clamp-2 text-sm text-muted-foreground">
-                      {complaint.gejala}
-                    </p>
-                    <p className="line-clamp-2 text-sm text-muted-foreground">
-                      {complaint.tindakan}
-                    </p>
-                    <span className="text-sm text-muted-foreground">
-                      {complaint.batchId ? "Ada" : "-"}
-                    </span>
-                  </div>
-                ))}
+                    <th className="w-28 px-5 py-3 font-semibold">Siswa</th>
+                    <th className="px-5 py-3 font-semibold">Gejala</th>
+                    <th className="px-5 py-3 font-semibold">Tindakan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading
+                    ? Array.from({ length: 3 }).map((_, index) => (
+                        <tr
+                          key={index}
+                          className="border-b border-[#edf0f4] last:border-0"
+                        >
+                          <td className="px-5 py-4">
+                            <Skeleton className="h-4 w-32" />
+                          </td>
+                          {showSchoolReporter ? (
+                            <td className="px-5 py-4">
+                              <Skeleton className="h-4 w-32" />
+                            </td>
+                          ) : null}
+                          <td className="px-5 py-4">
+                            <Skeleton className="h-4 w-16" />
+                          </td>
+                          <td className="px-5 py-4">
+                            <Skeleton className="h-4 w-56" />
+                          </td>
+                          <td className="px-5 py-4">
+                            <Skeleton className="h-4 w-56" />
+                          </td>
+                        </tr>
+                      ))
+                    : null}
+
+                  {!loading && complaints.length === 0 ? (
+                    <tr>
+                      <td
+                        colSpan={showSchoolReporter ? 5 : 4}
+                        className="px-5 py-10 text-center text-muted-foreground"
+                      >
+                        Belum ada keluhan siswa yang tercatat.
+                      </td>
+                    </tr>
+                  ) : null}
+
+                  {!loading
+                    ? paginatedComplaints.map((complaint) => (
+                        <tr
+                          key={complaint.id}
+                          className="border-b border-[#edf0f4] last:border-0"
+                        >
+                          <td className="px-5 py-4">
+                            <p className="font-semibold text-[#111827]">
+                              {new Date(
+                                complaint.waktuKejadian
+                              ).toLocaleDateString("id-ID")}
+                            </p>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              {new Date(
+                                complaint.waktuKejadian
+                              ).toLocaleTimeString("id-ID")}
+                            </p>
+                          </td>
+                          {showSchoolReporter ? (
+                            <td className="px-5 py-4">
+                              <span className="font-medium">
+                                {getReporterName(complaint)}
+                              </span>
+                            </td>
+                          ) : null}
+                          <td className="w-28 px-5 py-4">
+                            <span className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-rose-700">
+                              {complaint.jumlahSiswa} siswa
+                            </span>
+                          </td>
+                          <td className="px-5 py-4 text-muted-foreground">
+                            <p className="line-clamp-2">{complaint.gejala}</p>
+                          </td>
+                          <td className="px-5 py-4 text-muted-foreground">
+                            <p className="line-clamp-2">{complaint.tindakan}</p>
+                          </td>
+                        </tr>
+                      ))
+                    : null}
+                </tbody>
+              </table>
+            </div>
+
+            {!loading && complaints.length > COMPLAINTS_PER_PAGE ? (
+              <div className="flex items-center justify-center gap-2 border-t border-[#edf0f4] p-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  disabled={activePage <= 1}
+                  onClick={() =>
+                    setCurrentPage((page) => Math.max(1, page - 1))
+                  }
+                >
+                  <ChevronLeftIcon />
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }).map((_, index) => {
+                    const page = index + 1
+
+                    return (
+                      <button
+                        key={page}
+                        type="button"
+                        className={
+                          activePage === page
+                            ? "flex size-8 items-center justify-center rounded-lg bg-[#f3f4f6] text-sm font-semibold"
+                            : "flex size-8 items-center justify-center rounded-lg text-sm text-muted-foreground hover:bg-[#f7f8fb]"
+                        }
+                        onClick={() => setCurrentPage(page)}
+                      >
+                        {page}
+                      </button>
+                    )
+                  })}
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  disabled={activePage >= totalPages}
+                  onClick={() =>
+                    setCurrentPage((page) => Math.min(totalPages, page + 1))
+                  }
+                >
+                  <ChevronRightIcon />
+                </Button>
               </div>
             ) : null}
-          </CardContent>
-        </Card>
+          </section>
         ) : null}
       </section>
     </DashboardShell>

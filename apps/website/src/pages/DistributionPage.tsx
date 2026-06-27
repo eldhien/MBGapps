@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
   EyeIcon,
   PencilIcon,
   PlusIcon,
@@ -26,6 +28,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
@@ -50,10 +53,28 @@ type SchoolRow = {
   schoolId: string
 }
 
+const DISTRIBUTION_HISTORY_PER_PAGE = 10
+
 function getCurrentDateTimeLocal() {
   const value = new Date()
   value.setMinutes(value.getMinutes() - value.getTimezoneOffset())
   return value.toISOString().slice(0, 16)
+}
+
+function formatDistributionId(distribution: ProductionDistribution) {
+  const date = new Date(distribution.createdAt || distribution.waktuKirim || "")
+  const datePart = Number.isNaN(date.getTime())
+    ? "00000000"
+    : [
+        String(date.getDate()).padStart(2, "0"),
+        String(date.getMonth() + 1).padStart(2, "0"),
+        date.getFullYear(),
+      ].join("")
+  const suffix =
+    distribution.id.replace(/[^a-z0-9]/gi, "").slice(-6).toUpperCase() ||
+    "000000"
+
+  return `DST-${datePart}-${suffix}`
 }
 
 function getDistributionStatus(distribution: ProductionDistribution) {
@@ -62,21 +83,88 @@ function getDistributionStatus(distribution: ProductionDistribution) {
     : distribution.status
 }
 
-function isDistributionValidated(distribution: ProductionDistribution) {
-  return (
-    distribution.schools.length > 0 &&
-    distribution.schools.every((item) =>
-      item.status === "DITERIMA" || item.status === "DITOLAK"
-    )
+function getBatchTotalPortions(batch: any | undefined) {
+  return Number(batch?.totalPorsi ?? batch?.jumlahPorsi ?? 0)
+}
+
+function getDistributionTotalPortions(distribution: ProductionDistribution) {
+  return distribution.schools.reduce(
+    (total, school) => total + Number(school.jumlahPorsi || 0),
+    0
   )
 }
 
-export function DistributionPage({ mode = "create" }: { mode?: "create" | "history" }) {
+function getAllocatedBatchPortions(
+  distributions: ProductionDistribution[],
+  batchId: string | undefined,
+  excludeDistributionId?: string
+) {
+  if (!batchId) return 0
+
+  return distributions
+    .filter(
+      (distribution) =>
+        distribution.batchId === batchId &&
+        distribution.id !== excludeDistributionId
+    )
+    .reduce(
+      (total, distribution) => total + getDistributionTotalPortions(distribution),
+      0
+    )
+}
+
+function getBatchRemainingPortions(
+  batch: any | undefined,
+  distributions: ProductionDistribution[],
+  excludeDistributionId?: string
+) {
+  if (!batch) return 0
+
+  return Math.max(
+    0,
+    getBatchTotalPortions(batch) -
+      getAllocatedBatchPortions(distributions, batch.id, excludeDistributionId)
+  )
+}
+
+function getRowsTotalPortions(rows: SchoolRow[]) {
+  return rows.reduce((total, row) => total + Number(row.jumlahPorsi || 0), 0)
+}
+
+function getStockValidationMessage(
+  batch: any | undefined,
+  rows: SchoolRow[],
+  distributions: ProductionDistribution[],
+  excludeDistributionId?: string
+) {
+  if (!batch) return null
+
+  const availablePortions = getBatchRemainingPortions(
+    batch,
+    distributions,
+    excludeDistributionId
+  )
+  const requestedPortions = getRowsTotalPortions(rows)
+
+  if (requestedPortions > availablePortions) {
+    return `Total porsi sekolah (${requestedPortions.toLocaleString("id-ID")}) melebihi sisa stok batch (${availablePortions.toLocaleString("id-ID")}). Kurangi jumlah porsi sebelum menyimpan distribusi.`
+  }
+
+  return null
+}
+
+export function DistributionPage({
+  mode = "create",
+}: {
+  mode?: "create" | "history"
+}) {
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
   const selectedBatchIdFromQuery = searchParams.get("batchId") ?? ""
-  const cachedBatches = getCachedPageData<any[]>(pageCacheKeys.productionBatches)
+  const cachedBatches = getCachedPageData<any[]>(
+    pageCacheKeys.productionBatches
+  )
   const cachedDistributions = getCachedPageData<ProductionDistribution[]>(
     pageCacheKeys.productionDistributions
   )
@@ -104,17 +192,25 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
   const [success, setSuccess] = useState<string | null>(
     () => (location.state as { success?: string } | null)?.success ?? null
   )
-  const [viewTarget, setViewTarget] = useState<ProductionDistribution | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<ProductionDistribution | null>(null)
-  const [editTarget, setEditTarget] = useState<ProductionDistribution | null>(null)
+  const [viewTarget, setViewTarget] = useState<ProductionDistribution | null>(
+    null
+  )
+  const [deleteTarget, setDeleteTarget] =
+    useState<ProductionDistribution | null>(null)
+  const [editTarget, setEditTarget] = useState<ProductionDistribution | null>(
+    null
+  )
   const [editBatchId, setEditBatchId] = useState("")
   const [editDriverId, setEditDriverId] = useState("")
-  const [editWaktuKirim, setEditWaktuKirim] = useState(getCurrentDateTimeLocal())
+  const [editWaktuKirim, setEditWaktuKirim] = useState(
+    getCurrentDateTimeLocal()
+  )
   const [editSchoolRows, setEditSchoolRows] = useState<SchoolRow[]>([])
   const [waktuKirim, setWaktuKirim] = useState(getCurrentDateTimeLocal())
   const [schoolRows, setSchoolRows] = useState<SchoolRow[]>([
     { jumlahPorsi: "", schoolId: "" },
   ])
+  const [currentHistoryPage, setCurrentHistoryPage] = useState(1)
 
   const selectedSchoolIds = useMemo(
     () => new Set(schoolRows.map((row) => row.schoolId).filter(Boolean)),
@@ -125,19 +221,70 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
     [editSchoolRows]
   )
   const productionBatches = useMemo(
-    () => batches.filter((batch) => batch.status === "DIPRODUKSI"),
-    [batches]
+    () =>
+      batches.filter(
+        (batch) =>
+          batch.status !== "DITOLAK" &&
+          getBatchRemainingPortions(batch, distributions) > 0
+      ),
+    [batches, distributions]
   )
   const editableBatches = useMemo(
     () =>
       batches.filter(
-        (batch) => batch.status === "DIPRODUKSI" || batch.id === editBatchId
+        (batch) =>
+          batch.id === editBatchId ||
+          (batch.status !== "DITOLAK" &&
+            getBatchRemainingPortions(
+              batch,
+              distributions,
+              editTarget?.id
+            ) > 0)
       ),
-    [batches, editBatchId]
+    [batches, distributions, editBatchId, editTarget?.id]
   )
   const historyDistributions = useMemo(
-    () => distributions.filter(isDistributionValidated),
+    () => distributions,
     [distributions]
+  )
+  const distributionHistoryTotalPages = Math.max(
+    1,
+    Math.ceil(historyDistributions.length / DISTRIBUTION_HISTORY_PER_PAGE)
+  )
+  const paginatedHistoryDistributions = useMemo(
+    () =>
+      historyDistributions.slice(
+        (currentHistoryPage - 1) * DISTRIBUTION_HISTORY_PER_PAGE,
+        currentHistoryPage * DISTRIBUTION_HISTORY_PER_PAGE
+      ),
+    [currentHistoryPage, historyDistributions]
+  )
+  const selectedBatch = useMemo(
+    () => batches.find((batch) => batch.id === batchId),
+    [batchId, batches]
+  )
+  const selectedBatchAvailablePortions = getBatchRemainingPortions(
+    selectedBatch,
+    distributions
+  )
+  const selectedBatchRequestedPortions = getRowsTotalPortions(schoolRows)
+  const selectedBatchRemainingPortions = Math.max(
+    0,
+    selectedBatchAvailablePortions - selectedBatchRequestedPortions
+  )
+  const editSelectedBatch = useMemo(
+    () => batches.find((batch) => batch.id === editBatchId),
+    [batches, editBatchId]
+  )
+  const editSelectedBatchAvailablePortions = getBatchRemainingPortions(
+    editSelectedBatch,
+    distributions,
+    editTarget?.id
+  )
+  const editRequestedPortions = getRowsTotalPortions(editSchoolRows)
+  const editRemainingPortions = Math.max(
+    0,
+    editSelectedBatchAvailablePortions - editRequestedPortions
   )
 
   async function fetchLatestData(showLoading: boolean) {
@@ -145,17 +292,27 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
     setError(null)
 
     try {
-      const [batchResponse, schoolResponse, distributionResponse, driverResponse] =
-        await Promise.all([
-          api.productionBatches.list(),
-          api.schoolAccounts.list(),
-          api.productionDistributions.list(),
-          api.drivers.list({ active: true }),
-        ])
+      const [
+        batchResponse,
+        schoolResponse,
+        distributionResponse,
+        driverResponse,
+      ] = await Promise.all([
+        api.productionBatches.list(),
+        api.schoolAccounts.list(),
+        api.productionDistributions.list(),
+        api.drivers.list({ active: true }),
+      ])
 
-      setBatches(setCachedPageData(pageCacheKeys.productionBatches, batchResponse))
-      setDrivers(setCachedPageData(pageCacheKeys.drivers, driverResponse.drivers))
-      setSchools(setCachedPageData(pageCacheKeys.schoolAccounts, schoolResponse.schools))
+      setBatches(
+        setCachedPageData(pageCacheKeys.productionBatches, batchResponse)
+      )
+      setDrivers(
+        setCachedPageData(pageCacheKeys.drivers, driverResponse.drivers)
+      )
+      setSchools(
+        setCachedPageData(pageCacheKeys.schoolAccounts, schoolResponse.schools)
+      )
       setDistributions(
         setCachedPageData(
           pageCacheKeys.productionDistributions,
@@ -173,11 +330,15 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
 
   async function loadData(force = false) {
     if (!force) {
-      const batchesCache = getCachedPageData<any[]>(pageCacheKeys.productionBatches)
+      const batchesCache = getCachedPageData<any[]>(
+        pageCacheKeys.productionBatches
+      )
       const distributionsCache = getCachedPageData<ProductionDistribution[]>(
         pageCacheKeys.productionDistributions
       )
-      const schoolsCache = getCachedPageData<SchoolAccount[]>(pageCacheKeys.schoolAccounts)
+      const schoolsCache = getCachedPageData<SchoolAccount[]>(
+        pageCacheKeys.schoolAccounts
+      )
       const driversCache = getCachedPageData<Driver[]>(pageCacheKeys.drivers)
 
       if (batchesCache && distributionsCache && schoolsCache && driversCache) {
@@ -208,15 +369,14 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
   }, [location.pathname, location.state, navigate])
 
   useEffect(() => {
-    const unsubscribeDistributions = subscribePageCache<ProductionDistribution[]>(
-      pageCacheKeys.productionDistributions,
-      (cachedData) => {
-        if (cachedData) {
-          setDistributions(cachedData)
-          setIsLoading(false)
-        }
+    const unsubscribeDistributions = subscribePageCache<
+      ProductionDistribution[]
+    >(pageCacheKeys.productionDistributions, (cachedData) => {
+      if (cachedData) {
+        setDistributions(cachedData)
+        setIsLoading(false)
       }
-    )
+    })
     const unsubscribeBatches = subscribePageCache<any[]>(
       pageCacheKeys.productionBatches,
       (cachedData) => {
@@ -252,20 +412,80 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
     }
   }, [selectedBatchIdFromQuery])
 
+  useEffect(() => {
+    setCurrentHistoryPage((page) =>
+      Math.min(page, distributionHistoryTotalPages)
+    )
+  }, [distributionHistoryTotalPages])
+
   function updateSchoolRow(index: number, value: Partial<SchoolRow>) {
-    setSchoolRows((current) =>
-      current.map((row, rowIndex) =>
+    setSchoolRows((current) => {
+      const nextRows = current.map((row, rowIndex) =>
         rowIndex === index ? { ...row, ...value } : row
       )
-    )
+      const stockMessage = getStockValidationMessage(
+        selectedBatch,
+        nextRows,
+        distributions
+      )
+
+      if (stockMessage) {
+        setError(stockMessage)
+      }
+
+      return nextRows
+    })
   }
 
   function updateEditSchoolRow(index: number, value: Partial<SchoolRow>) {
-    setEditSchoolRows((current) =>
-      current.map((row, rowIndex) =>
+    setEditSchoolRows((current) => {
+      const nextRows = current.map((row, rowIndex) =>
         rowIndex === index ? { ...row, ...value } : row
       )
+      const stockMessage = getStockValidationMessage(
+        editSelectedBatch,
+        nextRows,
+        distributions,
+        editTarget?.id
+      )
+
+      if (stockMessage) {
+        setError(stockMessage)
+      }
+
+      return nextRows
+    })
+  }
+
+  function handleBatchChange(nextBatchId: string) {
+    setBatchId(nextBatchId)
+
+    const nextBatch = batches.find((batch) => batch.id === nextBatchId)
+    const stockMessage = getStockValidationMessage(
+      nextBatch,
+      schoolRows,
+      distributions
     )
+
+    if (stockMessage) {
+      setError(stockMessage)
+    }
+  }
+
+  function handleEditBatchChange(nextBatchId: string) {
+    setEditBatchId(nextBatchId)
+
+    const nextBatch = batches.find((batch) => batch.id === nextBatchId)
+    const stockMessage = getStockValidationMessage(
+      nextBatch,
+      editSchoolRows,
+      distributions,
+      editTarget?.id
+    )
+
+    if (stockMessage) {
+      setError(stockMessage)
+    }
   }
 
   function openEditDistribution(distribution: ProductionDistribution) {
@@ -293,15 +513,27 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
 
     setError(null)
     setSuccess(null)
-    setIsSubmitting(true)
 
     try {
+      const stockMessage = getStockValidationMessage(
+        selectedBatch,
+        schoolRows,
+        distributions
+      )
+
+      if (stockMessage) {
+        setError(stockMessage)
+        return
+      }
+
       const payloadSchools = schoolRows
         .filter((row) => row.schoolId && Number(row.jumlahPorsi) > 0)
         .map((row) => ({
           schoolId: row.schoolId,
           jumlahPorsi: Number(row.jumlahPorsi),
         }))
+
+      setIsSubmitting(true)
 
       const response = await api.productionDistributions.create({
         batchId,
@@ -363,15 +595,28 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
 
     setError(null)
     setSuccess(null)
-    setIsSavingEdit(true)
 
     try {
+      const stockMessage = getStockValidationMessage(
+        editSelectedBatch,
+        editSchoolRows,
+        distributions,
+        editTarget.id
+      )
+
+      if (stockMessage) {
+        setError(stockMessage)
+        return
+      }
+
       const payloadSchools = editSchoolRows
         .filter((row) => row.schoolId && Number(row.jumlahPorsi) > 0)
         .map((row) => ({
           schoolId: row.schoolId,
           jumlahPorsi: Number(row.jumlahPorsi),
         }))
+
+      setIsSavingEdit(true)
 
       const response = await api.productionDistributions.update(editTarget.id, {
         batchId: editBatchId,
@@ -393,17 +638,18 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
         setCachedPageData(
           pageCacheKeys.productionBatches,
           current.map((batch) =>
-            batch.id === editTarget.batchId && batch.id !== response.distribution.batchId
+            batch.id === editTarget.batchId &&
+            batch.id !== response.distribution.batchId
               ? { ...batch, status: "DIPRODUKSI" }
               : batch.id === response.distribution.batchId
-              ? {
-                  ...batch,
-                  driver: response.distribution.batch?.driver ?? batch.driver,
-                  driverId:
-                    response.distribution.batch?.driver?.id ?? batch.driverId,
-                  status: "TERKIRIM",
-                }
-              : batch
+                ? {
+                    ...batch,
+                    driver: response.distribution.batch?.driver ?? batch.driver,
+                    driverId:
+                      response.distribution.batch?.driver?.id ?? batch.driverId,
+                    status: "TERKIRIM",
+                  }
+                : batch
           )
         )
       )
@@ -411,7 +657,9 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
       setEditTarget(null)
       setSuccess("Distribusi berhasil diperbarui.")
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Gagal mengedit distribusi.")
+      setError(
+        error instanceof Error ? error.message : "Gagal mengedit distribusi."
+      )
     } finally {
       setIsSavingEdit(false)
     }
@@ -437,12 +685,17 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
             ? { ...batch, status: "DIPRODUKSI" }
             : batch
         )
-        return setCachedPageData(pageCacheKeys.productionBatches, updatedBatches)
+        return setCachedPageData(
+          pageCacheKeys.productionBatches,
+          updatedBatches
+        )
       })
       setDeleteTarget(null)
       setSuccess("Distribusi berhasil dihapus.")
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Gagal menghapus distribusi.")
+      setError(
+        error instanceof Error ? error.message : "Gagal menghapus distribusi."
+      )
     } finally {
       setIsDeletingDistribution(false)
     }
@@ -467,12 +720,9 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
       ) : null}
 
       <section className="pb-1">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Distribusi makanan
-          </p>
+        <div>
           <h1 className="text-2xl font-semibold tracking-tight">
-            {mode === "create" ? "Upload Distribusi" : "Riwayat Distribusi"}
+            {mode === "create" ? "Buat Distribusi" : "Riwayat Distribusi"}
           </h1>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
             {mode === "create"
@@ -483,315 +733,36 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
       </section>
 
       {mode === "create" ? (
-        <section className="rounded-lg border bg-card p-4 text-card-foreground">
-
-        <form className="grid gap-4" onSubmit={onSubmit}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="grid gap-2 text-sm font-medium">
-              ID batch
-              <select
-                value={batchId}
-                onChange={(event) => setBatchId(event.target.value)}
-                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs"
-                required
-              >
-                <option value="">Pilih batch...</option>
-                {productionBatches.map((batch) => (
-                  <option key={batch.id} value={batch.id}>
-                    {batch.id} - {batch.menu?.name ?? "Menu"}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Petugas driver
-              <select
-                value={driverId}
-                onChange={(event) => setDriverId(event.target.value)}
-                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs"
-                required
-              >
-                <option value="">Pilih driver...</option>
-                {drivers.map((driver) => (
-                  <option key={driver.id} value={driver.id}>
-                    {driver.name}
-                    {driver.vehicleNumber ? ` - ${driver.vehicleNumber}` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-2 text-sm font-medium">
-              Waktu kirim
-              <Input
-                type="datetime-local"
-                value={waktuKirim}
-                onChange={(event) => setWaktuKirim(event.target.value)}
-                required
-              />
-            </label>
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.05)]">
+          <div className="border-b border-[#edf0f4] p-5">
+            <h2 className="text-lg font-semibold tracking-tight">
+              Form buat distribusi
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Isi data batch, driver, waktu kirim, dan sekolah tujuan
+              distribusi.
+            </p>
           </div>
 
-          <div className="grid gap-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold">Sekolah tujuan</h2>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setSchoolRows((current) => [
-                    ...current,
-                    { jumlahPorsi: "", schoolId: "" },
-                  ])
-                }
-              >
-                <PlusIcon />
-                Tambah sekolah
-              </Button>
-            </div>
-
-            {schoolRows.map((row, index) => (
-              <div
-                key={index}
-                className="grid gap-3 rounded-md border bg-muted/10 p-3 md:grid-cols-[1fr_160px_auto]"
-              >
-                <label className="grid gap-2 text-sm font-medium">
-                  Sekolah
-                  <select
-                    value={row.schoolId}
-                    onChange={(event) =>
-                      updateSchoolRow(index, { schoolId: event.target.value })
-                    }
-                    className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs"
-                    required
-                  >
-                    <option value="">Pilih sekolah...</option>
-                    {schools.map((school) => (
-                      <option
-                        key={school.id}
-                        value={school.id}
-                        disabled={
-                          selectedSchoolIds.has(school.id) &&
-                          school.id !== row.schoolId
-                        }
-                      >
-                        {school.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-2 text-sm font-medium">
-                  Jumlah porsi
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    step="1"
-                    value={row.jumlahPorsi}
-                    onChange={(event) =>
-                      updateSchoolRow(index, {
-                        jumlahPorsi: event.target.value,
-                      })
-                    }
-                    required
-                  />
-                </label>
-                <div className="flex items-end">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    disabled={schoolRows.length === 1}
-                    onClick={() =>
-                      setSchoolRows((current) =>
-                        current.filter((_, rowIndex) => rowIndex !== index)
-                      )
-                    }
-                  >
-                    <Trash2Icon className="text-destructive" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex justify-end">
-            <Button type="submit" pending={isSubmitting} disabled={isSubmitting}>
-              <SendIcon />
-              {isSubmitting ? "Menyimpan..." : "Submit Distribusi"}
-            </Button>
-          </div>
-        </form>
-        </section>
-      ) : null}
-
-      {mode === "history" ? (
-      <section className="rounded-lg border bg-card text-card-foreground">
-        <div className="border-b p-4">
-          <h2 className="text-lg font-semibold">Riwayat Distribusi</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b text-left text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Batch</th>
-                <th className="px-4 py-3 font-medium">Driver</th>
-                <th className="px-4 py-3 font-medium">Sekolah</th>
-                <th className="px-4 py-3 font-medium">Waktu Kirim</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 text-right font-medium">Aksi</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading
-                ? Array.from({ length: 3 }).map((_, index) => (
-                    <tr key={index} className="border-b last:border-0">
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-32" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-48" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-28" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-28" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-20" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="ml-auto h-8 w-32" />
-                      </td>
-                    </tr>
-                  ))
-                : null}
-              {historyDistributions.map((distribution) => (
-                <tr key={distribution.id} className="border-b last:border-0">
-                  <td className="px-4 py-3 font-medium">
-                    {distribution.batchId}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {distribution.batch?.driver?.name ?? "-"}
-                  </td>
-                  <td className="px-4 py-3">
-                    {distribution.schools
-                      .map((item) => `${item.school.name} (${item.jumlahPorsi})`)
-                      .join(", ")}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {distribution.waktuKirim
-                      ? new Date(distribution.waktuKirim).toLocaleString("id-ID")
-                      : "-"}
-                  </td>
-                  <td className="px-4 py-3">{getDistributionStatus(distribution)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setViewTarget(distribution)}
-                      >
-                        <EyeIcon className="mr-1 h-4 w-4" /> View
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openEditDistribution(distribution)}
-                      >
-                        <PencilIcon className="mr-1 h-4 w-4" /> Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => setDeleteTarget(distribution)}
-                      >
-                        <Trash2Icon className="mr-1 h-4 w-4" /> Delete
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {!isLoading && historyDistributions.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={6}
-                    className="px-4 py-8 text-center text-muted-foreground"
-                  >
-                    Belum ada distribusi yang sudah divalidasi sekolah.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </section>
-      ) : null}
-
-      <Dialog open={Boolean(viewTarget)} onOpenChange={(open) => !open && setViewTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Detail Distribusi</DialogTitle>
-            <DialogDescription>{viewTarget?.batchId}</DialogDescription>
-          </DialogHeader>
-          {viewTarget ? (
-            <dl className="grid gap-3 text-sm">
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted-foreground">Menu</dt>
-                <dd className="font-medium">{viewTarget.batch?.menu?.name ?? "-"}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted-foreground">Driver</dt>
-                <dd className="font-medium">{viewTarget.batch?.driver?.name ?? "-"}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-muted-foreground">Waktu kirim</dt>
-                <dd className="font-medium">
-                  {viewTarget.waktuKirim
-                    ? new Date(viewTarget.waktuKirim).toLocaleString("id-ID")
-                    : "-"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted-foreground">Sekolah tujuan</dt>
-                <dd className="mt-2 space-y-1 font-medium">
-                  {viewTarget.schools.map((item) => (
-                    <p key={item.id}>
-                      {item.school.name} - {item.jumlahPorsi} porsi ({item.status})
-                    </p>
-                  ))}
-                </dd>
-              </div>
-            </dl>
-          ) : null}
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={Boolean(editTarget)} onOpenChange={(open) => !open && setEditTarget(null)}>
-        <DialogContent className="flex max-h-[90svh] flex-col overflow-hidden sm:max-w-4xl">
-          <DialogHeader>
-            <DialogTitle>Edit Distribusi</DialogTitle>
-            <DialogDescription>{editTarget?.batchId}</DialogDescription>
-          </DialogHeader>
-          <form className="flex min-h-0 flex-col gap-4" onSubmit={saveDistributionEdit}>
-            <div className="max-h-[calc(90svh-10rem)] overflow-y-auto overscroll-contain pr-2">
-            <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,0.9fr)_minmax(0,1fr)]">
-              <label className="grid gap-2 text-sm font-medium">
+          <form className="grid gap-5 p-5" onSubmit={onSubmit}>
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <label className="grid min-w-0 gap-2 text-sm font-medium">
                 ID batch
                 <select
-                  value={editBatchId}
-                  onChange={(event) => setEditBatchId(event.target.value)}
-                  className="h-9 min-w-0 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs"
+                  value={batchId}
+                  onChange={(event) => handleBatchChange(event.target.value)}
+                  className="h-10 w-full min-w-0 truncate rounded-lg border border-[#e3e7ef] bg-white px-3 pr-10 text-sm transition-colors outline-none hover:border-[#cfd6e3] focus:border-[#0528f2] focus:ring-3 focus:ring-[#0528f2]/15"
                   required
                 >
                   <option value="">Pilih batch...</option>
-                  {editableBatches.map((batch) => (
+                  {productionBatches.map((batch) => (
                     <option key={batch.id} value={batch.id}>
-                      {batch.id} - {batch.menu?.name ?? "Menu"}
+                      {batch.id} - sisa{" "}
+                      {getBatchRemainingPortions(
+                        batch,
+                        distributions
+                      ).toLocaleString("id-ID")}{" "}
+                      porsi tersisa
                     </option>
                   ))}
                 </select>
@@ -799,9 +770,9 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
               <label className="grid gap-2 text-sm font-medium">
                 Petugas driver
                 <select
-                  value={editDriverId}
-                  onChange={(event) => setEditDriverId(event.target.value)}
-                  className="h-9 min-w-0 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs"
+                  value={driverId}
+                  onChange={(event) => setDriverId(event.target.value)}
+                  className="h-10 rounded-lg border border-[#e3e7ef] bg-white px-3 text-sm transition-colors outline-none hover:border-[#cfd6e3] focus:border-[#0528f2] focus:ring-3 focus:ring-[#0528f2]/15"
                   required
                 >
                   <option value="">Pilih driver...</option>
@@ -817,22 +788,65 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                 Waktu kirim
                 <Input
                   type="datetime-local"
-                  value={editWaktuKirim}
-                  onChange={(event) => setEditWaktuKirim(event.target.value)}
+                  value={waktuKirim}
+                  onChange={(event) => setWaktuKirim(event.target.value)}
+                  className="h-10 rounded-lg border-[#e3e7ef] bg-white"
                   required
                 />
               </label>
             </div>
 
-            <div className="mt-4 grid gap-3 border-t pt-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="grid gap-3 rounded-xl border border-[#e9edf4] bg-[#f8fafc] p-4 sm:grid-cols-3">
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">
+                  Sisa stok
+                </p>
+                <p className="mt-1 text-lg font-semibold text-[#111827]">
+                  {batchId
+                    ? selectedBatchAvailablePortions.toLocaleString("id-ID")
+                    : "0"}{" "}
+                  porsi
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">
+                  Dialokasikan
+                </p>
+                <p className="mt-1 text-lg font-semibold text-[#111827]">
+                  {selectedBatchRequestedPortions.toLocaleString("id-ID")} porsi
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-muted-foreground">
+                  Sisa porsi
+                </p>
+                <p
+                  className={
+                    selectedBatchRequestedPortions >
+                      selectedBatchAvailablePortions &&
+                    batchId
+                      ? "mt-1 text-lg font-semibold text-red-600"
+                      : "mt-1 text-lg font-semibold text-emerald-600"
+                  }
+                >
+                  {batchId
+                    ? selectedBatchRemainingPortions.toLocaleString("id-ID")
+                    : "0"}{" "}
+                  porsi
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3">
+              <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold">Sekolah tujuan</h2>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
+                  className="rounded-lg border-[#e3e7ef]"
                   onClick={() =>
-                    setEditSchoolRows((current) => [
+                    setSchoolRows((current) => [
                       ...current,
                       { jumlahPorsi: "", schoolId: "" },
                     ])
@@ -843,19 +857,19 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                 </Button>
               </div>
 
-              {editSchoolRows.map((row, index) => (
+              {schoolRows.map((row, index) => (
                 <div
                   key={index}
-                  className="grid gap-3 rounded-md border bg-muted/10 p-3 md:grid-cols-[minmax(0,1fr)_180px_auto] md:items-end"
+                  className="grid gap-3 rounded-xl border border-[#e9edf4] bg-[#fcfcfd] p-4 md:grid-cols-[1fr_160px_auto] md:items-end"
                 >
                   <label className="grid gap-2 text-sm font-medium">
                     Sekolah
                     <select
                       value={row.schoolId}
                       onChange={(event) =>
-                        updateEditSchoolRow(index, { schoolId: event.target.value })
+                        updateSchoolRow(index, { schoolId: event.target.value })
                       }
-                      className="h-9 min-w-0 rounded-md border border-input bg-background px-3 text-sm shadow-xs"
+                      className="h-10 rounded-lg border border-[#e3e7ef] bg-white px-3 text-sm transition-colors outline-none hover:border-[#cfd6e3] focus:border-[#0528f2] focus:ring-3 focus:ring-[#0528f2]/15"
                       required
                     >
                       <option value="">Pilih sekolah...</option>
@@ -864,7 +878,7 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                           key={school.id}
                           value={school.id}
                           disabled={
-                            selectedEditSchoolIds.has(school.id) &&
+                            selectedSchoolIds.has(school.id) &&
                             school.id !== row.schoolId
                           }
                         >
@@ -879,48 +893,538 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
                       type="number"
                       inputMode="numeric"
                       step="1"
+                      min="1"
+                      max={selectedBatchAvailablePortions || undefined}
                       value={row.jumlahPorsi}
                       onChange={(event) =>
-                        updateEditSchoolRow(index, {
+                        updateSchoolRow(index, {
                           jumlahPorsi: event.target.value,
                         })
                       }
+                      className="h-10 rounded-lg border-[#e3e7ef] bg-white"
                       required
                     />
                   </label>
-                  <div className="flex md:pb-0">
+                  <div className="flex">
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon"
-                      disabled={editSchoolRows.length === 1}
+                      className="text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                      disabled={schoolRows.length === 1}
                       onClick={() =>
-                        setEditSchoolRows((current) =>
+                        setSchoolRows((current) =>
                           current.filter((_, rowIndex) => rowIndex !== index)
                         )
                       }
                     >
-                      <Trash2Icon className="text-destructive" />
+                      <Trash2Icon />
                     </Button>
                   </div>
                 </div>
               ))}
             </div>
+
+            <div className="flex justify-end">
+              <Button
+                type="submit"
+                pending={isSubmitting}
+                disabled={isSubmitting}
+                className="h-10 rounded-lg bg-[#0528f2] px-4 text-white hover:bg-[#0422c8]"
+              >
+                <SendIcon />
+                {isSubmitting ? "Menyimpan..." : "Submit Distribusi"}
+              </Button>
+            </div>
+          </form>
+        </section>
+      ) : null}
+
+      {mode === "history" ? (
+        <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.05)]">
+          <div className="flex flex-col gap-2 border-b border-[#edf0f4] p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="flex items-center gap-1">
+                <h2 className="text-lg font-semibold tracking-tight">
+                  Riwayat distribusi
+                </h2>
+                <span className="text-lg font-semibold text-muted-foreground">
+                  {isLoading ? "..." : historyDistributions.length}
+                </span>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Distribusi yang sudah dibuat akan tampil di sini.
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-sm">
+              <thead>
+                <tr className="border-b border-[#edf0f4] bg-[#fcfcfd] text-left text-xs text-muted-foreground">
+                  <th className="px-5 py-3 font-medium">ID Distribusi</th>
+                  <th className="px-5 py-3 font-medium">Driver</th>
+                  <th className="px-5 py-3 font-medium">Sekolah</th>
+                  <th className="px-5 py-3 font-medium">Waktu Kirim</th>
+                  <th className="px-5 py-3 font-medium">Status</th>
+                  <th className="px-5 py-3 text-right font-medium">Aksi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading
+                  ? Array.from({ length: 3 }).map((_, index) => (
+                      <tr key={index} className="border-b border-[#edf0f4]">
+                        <td className="px-5 py-4">
+                          <Skeleton className="h-4 w-32" />
+                        </td>
+                        <td className="px-5 py-4">
+                          <Skeleton className="h-4 w-48" />
+                        </td>
+                        <td className="px-5 py-4">
+                          <Skeleton className="h-4 w-28" />
+                        </td>
+                        <td className="px-5 py-4">
+                          <Skeleton className="h-4 w-28" />
+                        </td>
+                        <td className="px-5 py-4">
+                          <Skeleton className="h-6 w-20 rounded-full" />
+                        </td>
+                        <td className="px-5 py-4">
+                          <Skeleton className="ml-auto h-8 w-32" />
+                        </td>
+                      </tr>
+                    ))
+                  : null}
+                {paginatedHistoryDistributions.map((distribution) => {
+                  const status = getDistributionStatus(distribution)
+                  const statusClassName =
+                    status === "DITOLAK"
+                      ? "bg-red-50 text-red-600 ring-red-100"
+                      : status === "SELESAI"
+                        ? "bg-emerald-50 text-emerald-600 ring-emerald-100"
+                        : "bg-slate-50 text-slate-600 ring-slate-200"
+
+                  return (
+                    <tr
+                      key={distribution.id}
+                      className="border-b border-[#edf0f4] last:border-0 hover:bg-[#fcfcfd]"
+                    >
+                      <td className="px-5 py-4">
+                        <p className="font-semibold">
+                          {formatDistributionId(distribution)}
+                        </p>
+                        <p className="mt-1 max-w-[220px] truncate text-xs text-muted-foreground">
+                          Batch {distribution.batchId}
+                        </p>
+                      </td>
+                      <td className="px-5 py-4 text-muted-foreground">
+                        {distribution.batch?.driver?.name ?? "-"}
+                      </td>
+                      <td className="px-5 py-4">
+                        <p className="line-clamp-2">
+                          {distribution.schools
+                            .map(
+                              (item) =>
+                                `${item.school.name} (${item.jumlahPorsi})`
+                            )
+                            .join(", ")}
+                        </p>
+                      </td>
+                      <td className="px-5 py-4 text-muted-foreground">
+                        {distribution.waktuKirim
+                          ? new Date(distribution.waktuKirim).toLocaleString(
+                              "id-ID"
+                            )
+                          : "-"}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${statusClassName}`}
+                        >
+                          {status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="rounded-lg border-[#e3e7ef]"
+                            onClick={() => setViewTarget(distribution)}
+                          >
+                            <EyeIcon className="mr-1 h-4 w-4" /> Lihat
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="rounded-lg border-[#e3e7ef]"
+                            onClick={() => openEditDistribution(distribution)}
+                          >
+                            <PencilIcon className="mr-1 h-4 w-4" /> Edit
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="rounded-lg border-red-100 text-red-600 hover:bg-red-50 hover:text-red-700"
+                            onClick={() => setDeleteTarget(distribution)}
+                          >
+                            <Trash2Icon className="mr-1 h-4 w-4" /> Hapus
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {!isLoading && historyDistributions.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={6}
+                      className="px-5 py-10 text-center text-muted-foreground"
+                    >
+                      Belum ada distribusi yang dibuat.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+          {!isLoading &&
+          historyDistributions.length > DISTRIBUTION_HISTORY_PER_PAGE ? (
+            <div className="flex items-center justify-center gap-2 border-t border-[#edf0f4] p-4">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                disabled={currentHistoryPage <= 1}
+                onClick={() =>
+                  setCurrentHistoryPage((page) => Math.max(1, page - 1))
+                }
+              >
+                <ChevronLeftIcon />
+              </Button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: distributionHistoryTotalPages }).map(
+                  (_, index) => {
+                    const page = index + 1
+
+                    return (
+                      <button
+                        key={page}
+                        type="button"
+                        className={
+                          currentHistoryPage === page
+                            ? "flex size-8 items-center justify-center rounded-lg bg-[#f3f4f6] text-sm font-semibold"
+                            : "flex size-8 items-center justify-center rounded-lg text-sm text-muted-foreground hover:bg-[#f7f8fb]"
+                        }
+                        onClick={() => setCurrentHistoryPage(page)}
+                      >
+                        {page}
+                      </button>
+                    )
+                  }
+                )}
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                disabled={currentHistoryPage >= distributionHistoryTotalPages}
+                onClick={() =>
+                  setCurrentHistoryPage((page) =>
+                    Math.min(distributionHistoryTotalPages, page + 1)
+                  )
+                }
+              >
+                <ChevronRightIcon />
+              </Button>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
+
+      <Dialog
+        open={Boolean(viewTarget)}
+        onOpenChange={(open) => !open && setViewTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Detail Distribusi</DialogTitle>
+            <DialogDescription>
+              {viewTarget
+                ? `${formatDistributionId(viewTarget)} - Batch ${viewTarget.batchId}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          {viewTarget ? (
+            <dl className="grid gap-3 text-sm">
+              <div className="flex justify-between gap-4">
+                <dt className="text-muted-foreground">Menu</dt>
+                <dd className="font-medium">
+                  {viewTarget.batch?.menu?.name ?? "-"}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-muted-foreground">Driver</dt>
+                <dd className="font-medium">
+                  {viewTarget.batch?.driver?.name ?? "-"}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-muted-foreground">Waktu kirim</dt>
+                <dd className="font-medium">
+                  {viewTarget.waktuKirim
+                    ? new Date(viewTarget.waktuKirim).toLocaleString("id-ID")
+                    : "-"}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-muted-foreground">Sekolah tujuan</dt>
+                <dd className="mt-2 space-y-1 font-medium">
+                  {viewTarget.schools.map((item) => (
+                    <p key={item.id}>
+                      {item.school.name} - {item.jumlahPorsi} porsi (
+                      {item.status})
+                    </p>
+                  ))}
+                </dd>
+              </div>
+            </dl>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(editTarget)}
+        onOpenChange={(open) => !open && setEditTarget(null)}
+      >
+        <DialogContent className="flex max-h-[90svh] flex-col overflow-hidden sm:max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Edit Distribusi</DialogTitle>
+            <DialogDescription>
+              {editTarget
+                ? `${formatDistributionId(editTarget)} - Batch ${editTarget.batchId}`
+                : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            className="flex min-h-0 flex-col gap-4"
+            onSubmit={saveDistributionEdit}
+          >
+            <div className="max-h-[calc(90svh-10rem)] overflow-y-auto overscroll-contain pr-2">
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,0.9fr)_minmax(0,1fr)]">
+                <label className="grid min-w-0 gap-2 text-sm font-medium">
+                  ID batch
+                  <select
+                    value={editBatchId}
+                    onChange={(event) =>
+                      handleEditBatchChange(event.target.value)
+                    }
+                    className="h-9 w-full min-w-0 truncate rounded-md border border-input bg-transparent px-3 pr-10 text-sm shadow-xs"
+                    required
+                  >
+                    <option value="">Pilih batch...</option>
+                    {editableBatches.map((batch) => (
+                      <option key={batch.id} value={batch.id}>
+                        {batch.id} - sisa{" "}
+                        {getBatchRemainingPortions(
+                          batch,
+                          distributions,
+                          editTarget?.id
+                        ).toLocaleString("id-ID")}{" "}
+                        porsi tersisa
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-2 text-sm font-medium">
+                  Petugas driver
+                  <select
+                    value={editDriverId}
+                    onChange={(event) => setEditDriverId(event.target.value)}
+                    className="h-9 min-w-0 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs"
+                    required
+                  >
+                    <option value="">Pilih driver...</option>
+                    {drivers.map((driver) => (
+                      <option key={driver.id} value={driver.id}>
+                        {driver.name}
+                        {driver.vehicleNumber
+                          ? ` - ${driver.vehicleNumber}`
+                          : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-2 text-sm font-medium">
+                  Waktu kirim
+                  <Input
+                    type="datetime-local"
+                    value={editWaktuKirim}
+                    onChange={(event) => setEditWaktuKirim(event.target.value)}
+                    required
+                  />
+                </label>
+              </div>
+
+              <div className="mt-4 grid gap-3 rounded-xl border border-[#e9edf4] bg-[#f8fafc] p-4 sm:grid-cols-3">
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Sisa stok
+                  </p>
+                  <p className="mt-1 text-base font-semibold text-[#111827]">
+                    {editBatchId
+                      ? editSelectedBatchAvailablePortions.toLocaleString(
+                          "id-ID"
+                        )
+                      : "0"}{" "}
+                    porsi
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Dialokasikan
+                  </p>
+                  <p className="mt-1 text-base font-semibold text-[#111827]">
+                    {editRequestedPortions.toLocaleString("id-ID")} porsi
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Sisa porsi
+                  </p>
+                  <p
+                    className={
+                      editRequestedPortions >
+                        editSelectedBatchAvailablePortions &&
+                      editBatchId
+                        ? "mt-1 text-base font-semibold text-red-600"
+                        : "mt-1 text-base font-semibold text-emerald-600"
+                    }
+                  >
+                    {editBatchId
+                      ? editRemainingPortions.toLocaleString("id-ID")
+                      : "0"}{" "}
+                    porsi
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 border-t pt-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <h2 className="text-sm font-semibold">Sekolah tujuan</h2>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      setEditSchoolRows((current) => [
+                        ...current,
+                        { jumlahPorsi: "", schoolId: "" },
+                      ])
+                    }
+                  >
+                    <PlusIcon />
+                    Tambah sekolah
+                  </Button>
+                </div>
+
+                {editSchoolRows.map((row, index) => (
+                  <div
+                    key={index}
+                    className="grid gap-3 rounded-md border bg-muted/10 p-3 md:grid-cols-[minmax(0,1fr)_180px_auto] md:items-end"
+                  >
+                    <label className="grid gap-2 text-sm font-medium">
+                      Sekolah
+                      <select
+                        value={row.schoolId}
+                        onChange={(event) =>
+                          updateEditSchoolRow(index, {
+                            schoolId: event.target.value,
+                          })
+                        }
+                        className="h-9 min-w-0 rounded-md border border-input bg-background px-3 text-sm shadow-xs"
+                        required
+                      >
+                        <option value="">Pilih sekolah...</option>
+                        {schools.map((school) => (
+                          <option
+                            key={school.id}
+                            value={school.id}
+                            disabled={
+                              selectedEditSchoolIds.has(school.id) &&
+                              school.id !== row.schoolId
+                            }
+                          >
+                            {school.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="grid gap-2 text-sm font-medium">
+                      Jumlah porsi
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        step="1"
+                        min="1"
+                        max={editSelectedBatchAvailablePortions || undefined}
+                        value={row.jumlahPorsi}
+                        onChange={(event) =>
+                          updateEditSchoolRow(index, {
+                            jumlahPorsi: event.target.value,
+                          })
+                        }
+                        required
+                      />
+                    </label>
+                    <div className="flex md:pb-0">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        disabled={editSchoolRows.length === 1}
+                        onClick={() =>
+                          setEditSchoolRows((current) =>
+                            current.filter((_, rowIndex) => rowIndex !== index)
+                          )
+                        }
+                      >
+                        <Trash2Icon className="text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="-mx-4 -mb-4 flex shrink-0 justify-end gap-2 border-t bg-popover px-4 py-3">
-              <Button type="button" variant="outline" onClick={() => setEditTarget(null)}>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditTarget(null)}
+              >
                 Batal
               </Button>
-              <Button type="submit" pending={isSavingEdit} disabled={isSavingEdit}>
+              <Button
+                type="submit"
+                pending={isSavingEdit}
+                disabled={isSavingEdit}
+              >
                 {isSavingEdit ? "Menyimpan..." : "Simpan"}
               </Button>
-            </div>
+            </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && !isDeletingDistribution && setDeleteTarget(null)}>
+      <AlertDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) =>
+          !open && !isDeletingDistribution && setDeleteTarget(null)
+        }
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia>
@@ -932,7 +1436,9 @@ export function DistributionPage({ mode = "create" }: { mode?: "create" | "histo
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeletingDistribution}>Batal</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletingDistribution}>
+              Batal
+            </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={isDeletingDistribution}

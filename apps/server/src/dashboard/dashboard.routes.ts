@@ -17,6 +17,73 @@ function isUuid(value?: string | null) {
   )
 }
 
+function getMonthRange(value?: unknown) {
+  if (typeof value !== "string" || !value.match(/^\d{4}-\d{2}$/)) {
+    const now = new Date()
+    return {
+      key: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
+      start: new Date(now.getFullYear(), now.getMonth(), 1),
+      end: new Date(now.getFullYear(), now.getMonth() + 1, 1),
+    }
+  }
+
+  const [year, month] = value.split("-").map(Number)
+  const start = new Date(year, month - 1, 1)
+
+  if (Number.isNaN(start.getTime())) {
+    const now = new Date()
+    return {
+      key: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
+      start: new Date(now.getFullYear(), now.getMonth(), 1),
+      end: new Date(now.getFullYear(), now.getMonth() + 1, 1),
+    }
+  }
+
+  return {
+    key: value,
+    start,
+    end: new Date(year, month, 1),
+  }
+}
+
+function withCreatedAtRange(where: Record<string, unknown>, start: Date, end: Date) {
+  return {
+    AND: [
+      where,
+      {
+        createdAt: {
+          gte: start,
+          lt: end,
+        },
+      },
+    ],
+  }
+}
+
+function buildDailyActivity(
+  start: Date,
+  end: Date,
+  records: { createdAt: Date }[]
+) {
+  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000)
+  const counts = Array.from({ length: days }, (_, index) => ({
+    label: String(index + 1),
+    value: 0,
+  }))
+
+  records.forEach((record) => {
+    const index = Math.floor(
+      (record.createdAt.getTime() - start.getTime()) / 86_400_000
+    )
+
+    if (counts[index]) {
+      counts[index].value += 1
+    }
+  })
+
+  return counts
+}
+
 async function getReporterSchoolId(user: {
   id: string
   role: string
@@ -74,6 +141,7 @@ dashboardRouter.get("/analytics", async (req, res, next) => {
 
     const reporterSchoolId = await getReporterSchoolId(currentUser)
     const sppgOwnerId = await getSppgOwnerId(currentUser)
+    const { start, end } = getMonthRange(req.query.month)
     const schoolReporterIds =
       currentUser.role === "SEKOLAH"
         ? ([currentUser.id, reporterSchoolId].filter(Boolean) as string[])
@@ -133,27 +201,73 @@ dashboardRouter.get("/analytics", async (req, res, next) => {
         ? { sekolahId: { in: schoolReporterIds } }
         : {}
 
-    const [totalBatches, totalDistributions, pendingDistributions, deliveredDistributions, totalFoodReports, totalStudentComplaints] =
+    const batchDateWhere = withCreatedAtRange(batchWhere, start, end)
+    const distributionDateWhere = withCreatedAtRange(
+      distributionSchoolWhere,
+      start,
+      end
+    )
+    const reportDateWhere = withCreatedAtRange(reportWhere, start, end)
+
+    const [
+      totalBatches,
+      totalDistributions,
+      pendingDistributions,
+      deliveredDistributions,
+      totalFoodReports,
+      totalStudentComplaints,
+      batchActivity,
+      distributionActivity,
+      reportActivity,
+      complaintActivity,
+    ] =
       await Promise.all([
         prisma.batchProduksi.count({
-          where: batchWhere,
+          where: batchDateWhere,
         }),
         prisma.batchDistributionSchool.count({
-          where: distributionSchoolWhere,
+          where: distributionDateWhere,
         }),
         prisma.batchDistributionSchool.count({
-          where: { ...distributionSchoolWhere, status: "MENUNGGU" },
+          where: {
+            AND: [distributionDateWhere, { status: "MENUNGGU" }],
+          },
         }),
         prisma.batchDistributionSchool.count({
-          where: { ...distributionSchoolWhere, status: "DITERIMA" },
+          where: {
+            AND: [distributionDateWhere, { status: "DITERIMA" }],
+          },
         }),
         prisma.foodReport.count({
-          where: reportWhere,
+          where: reportDateWhere,
         }),
         prisma.studentComplaint.count({
-          where: reportWhere,
+          where: reportDateWhere,
+        }),
+        prisma.batchProduksi.findMany({
+          where: batchDateWhere,
+          select: { createdAt: true },
+        }),
+        prisma.batchDistributionSchool.findMany({
+          where: distributionDateWhere,
+          select: { createdAt: true },
+        }),
+        prisma.foodReport.findMany({
+          where: reportDateWhere,
+          select: { createdAt: true },
+        }),
+        prisma.studentComplaint.findMany({
+          where: reportDateWhere,
+          select: { createdAt: true },
         }),
       ])
+
+    const dailyActivity = buildDailyActivity(start, end, [
+      ...batchActivity,
+      ...distributionActivity,
+      ...reportActivity,
+      ...complaintActivity,
+    ])
 
     res.json({
       data: {
@@ -163,6 +277,7 @@ dashboardRouter.get("/analytics", async (req, res, next) => {
         deliveredDistributions,
         totalFoodReports,
         totalStudentComplaints,
+        dailyActivity,
       },
     })
   } catch (error) {

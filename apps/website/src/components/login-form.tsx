@@ -9,10 +9,10 @@ import {
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/features/auth/AuthProvider"
 import { api } from "@/lib/api"
+import logoSrc from "@/assets/logo.svg"
 import {
   EyeIcon,
   EyeOffIcon,
-  GalleryVerticalEndIcon,
 } from "lucide-react"
 import { useState, type ComponentProps, type FormEvent } from "react"
 import { Link, useNavigate } from "react-router-dom"
@@ -63,8 +63,12 @@ export function LoginForm({
               to="/login"
               className="flex flex-col items-center gap-2 font-medium"
             >
-              <div className="flex size-8 items-center justify-center rounded-md">
-                <GalleryVerticalEndIcon className="size-6" />
+              <div className="flex size-12 items-center justify-center overflow-hidden rounded-xl bg-white shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
+                <img
+                  src={logoSrc}
+                  alt="MBG App"
+                  className="size-full object-contain p-1.5"
+                />
               </div>
               <span className="sr-only">NIC MBG</span>
             </Link>

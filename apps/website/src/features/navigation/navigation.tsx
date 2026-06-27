@@ -65,7 +65,9 @@ export const navigationPages: NavigationPage[] = [
     path: "/users",
     allowedRoles: ["SUPER_ADMIN"],
     icon: <UsersIcon />,
-    features: ["Manajemen pengguna multi-role: Super Admin, SPPG, dan Sekolah."],
+    features: [
+      "Manajemen pengguna multi-role: Super Admin, SPPG, dan Sekolah.",
+    ],
   },
   {
     key: "batch",
@@ -79,7 +81,7 @@ export const navigationPages: NavigationPage[] = [
     ],
     children: [
       {
-        title: "Upload Batch",
+        title: "Tambahkan Batch",
         path: "/batch/create",
         icon: <UploadIcon />,
       },
@@ -124,7 +126,7 @@ export const navigationPages: NavigationPage[] = [
     ],
     children: [
       {
-        title: "Upload Distribusi",
+        title: "Buat Distribusi",
         path: "/distribution",
         icon: <UploadIcon />,
       },
@@ -141,10 +143,7 @@ export const navigationPages: NavigationPage[] = [
     path: "/master-data",
     allowedRoles: sppgRoles,
     icon: <Settings2Icon />,
-    features: [
-      "Data driver.",
-      "Data akun sekolah.",
-    ],
+    features: ["Data driver.", "Data akun sekolah."],
     children: [
       {
         title: "Akun Sekolah",

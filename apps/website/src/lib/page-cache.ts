@@ -8,6 +8,7 @@ export const pageCacheKeys = {
   productionDistributions: "production-distributions:list",
   schoolAccounts: "school-accounts:list",
   schoolDistributions: "school-distributions:list",
+  studentComplaintAnalysis: "student-complaints:analysis",
   studentComplaints: "student-complaints:list",
   users: "users:list",
 } as const

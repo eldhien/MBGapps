@@ -6,19 +6,22 @@ import {
   ClockIcon,
   RefreshCwIcon,
   SchoolIcon,
-  SparklesIcon,
   TruckIcon,
   UsersRoundIcon,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type {
   ComplaintAnalysis,
   ComplaintAnalysisPeriod,
   ComplaintDangerCategory,
 } from "@/lib/api"
 import { api } from "@/lib/api"
+import {
+  getCachedPageData,
+  pageCacheKeys,
+  setCachedPageData,
+} from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 
 const periodOptions = [
@@ -42,33 +45,52 @@ function formatDateTime(value: string | null) {
 
 function getCategoryClass(category: ComplaintDangerCategory) {
   if (category === "Berat") {
-    return "border-destructive/30 bg-destructive/5 text-destructive"
+    return "border-red-100 bg-red-50 text-red-600"
   }
 
   if (category === "Sedang") {
-    return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+    return "border-amber-100 bg-amber-50 text-amber-700"
   }
 
-  return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+  return "border-emerald-100 bg-emerald-50 text-emerald-700"
 }
 
 function formatPercent(value: number) {
   return `${Math.round(value * 100)}%`
 }
 
+function getComplaintAnalysisCacheKey(period: ComplaintAnalysisPeriod) {
+  return `${pageCacheKeys.studentComplaintAnalysis}:${period}`
+}
+
 export function ComplaintPatternsAiPage() {
-  const [analysis, setAnalysis] = useState<ComplaintAnalysis | null>(null)
+  const cachedInitialAnalysis = getCachedPageData<ComplaintAnalysis>(
+    getComplaintAnalysisCacheKey("7d")
+  )
+  const [analysis, setAnalysis] = useState<ComplaintAnalysis | null>(
+    cachedInitialAnalysis ?? null
+  )
   const [period, setPeriod] = useState<ComplaintAnalysisPeriod>("7d")
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(!cachedInitialAnalysis)
   const [error, setError] = useState<string | null>(null)
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (force = false) => {
+    const cacheKey = getComplaintAnalysisCacheKey(period)
+    const cachedAnalysis = getCachedPageData<ComplaintAnalysis>(cacheKey)
+
+    if (!force && cachedAnalysis) {
+      setAnalysis(cachedAnalysis)
+      setIsLoading(false)
+      setError(null)
+      return
+    }
+
     setIsLoading(true)
     setError(null)
 
     try {
       const response = await api.studentComplaints.analysis(period)
-      setAnalysis(response.data)
+      setAnalysis(setCachedPageData(cacheKey, response.data))
     } catch (err) {
       setError(
         err instanceof Error
@@ -116,47 +138,51 @@ export function ComplaintPatternsAiPage() {
 
   return (
     <DashboardShell title="Deteksi Pola Keluhan Siswa (AI)">
-      <div className="space-y-4">
-        <section className="rounded-lg border bg-card p-5">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-            <div className="max-w-3xl">
-              <p className="inline-flex items-center gap-2 text-sm font-medium text-primary">
-                <SparklesIcon className="size-4" />
-                AI evaluasi SPPG berbasis engine backend
-              </p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-                Deteksi Pola Keluhan Siswa (AI)
-              </h1>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Menganalisis gejala dengan synonym catalog, negation handling,
-                fuzzy matching, confidence score, serta konteks batch, menu, dan
-                distribusi.
-              </p>
-            </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="flex rounded-lg border bg-background p-1">
-                {periodOptions.map((item) => (
+      <div className="space-y-6">
+        <section className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Deteksi Pola Keluhan Siswa (AI)
+            </h1>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+              Analisis pola gejala, sekolah terdampak, dan rekomendasi tindak
+              lanjut dari data keluhan siswa.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex rounded-xl border border-[#e3e7ef] bg-white p-1">
+              {periodOptions.map((item) => {
+                const isActive = period === item.value
+
+                return (
                   <Button
                     key={item.value}
                     type="button"
-                    variant={period === item.value ? "default" : "ghost"}
+                    variant="ghost"
                     size="sm"
+                    className={`h-8 cursor-pointer rounded-lg px-3 ${
+                      isActive
+                        ? "bg-[#0528f2] text-white hover:bg-[#0528f2] hover:text-white"
+                        : "text-muted-foreground hover:bg-[#f7f9ff] hover:text-[#0528f2]"
+                    }`}
                     onClick={() => setPeriod(item.value)}
                   >
                     {item.label}
                   </Button>
-                ))}
-              </div>
-              <Button
-                variant="outline"
-                onClick={loadData}
-                pending={isLoading}
-                disabled={isLoading}
-              >
-                <RefreshCwIcon className="size-4" />
-                Refresh
-              </Button>
+                )
+              })}
             </div>
+            <Button
+              variant="outline"
+              className="h-10 cursor-pointer rounded-xl border-[#e3e7ef] bg-white"
+              onClick={() => void loadData(true)}
+              pending={isLoading}
+              disabled={isLoading}
+            >
+              <RefreshCwIcon className="size-4" />
+              Refresh
+            </Button>
           </div>
         </section>
 
@@ -165,62 +191,65 @@ export function ComplaintPatternsAiPage() {
             const Icon = item.icon
 
             return (
-              <Card key={item.label}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {item.label}
-                    </span>
-                    <Icon className="size-4 text-primary" />
-                  </div>
-                  <p className="mt-3 text-2xl font-bold">
-                    {isLoading ? "..." : item.value}
-                  </p>
-                </CardContent>
-              </Card>
+              <section
+                key={item.label}
+                className="rounded-xl border border-[#edf0f4] bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.03)]"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {item.label}
+                  </span>
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#eef2ff] text-[#0528f2]">
+                    <Icon className="size-4" />
+                  </span>
+                </div>
+                <p className="mt-4 text-2xl font-bold">
+                  {isLoading ? "..." : item.value}
+                </p>
+              </section>
             )
           })}
         </div>
 
         {error ? (
-          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          <div className="rounded-xl border border-red-100 bg-red-50 p-3 text-sm font-medium text-red-600">
             {error}
           </div>
         ) : null}
 
-        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Kesimpulan AI</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Hasil dihitung di server agar konsisten dan mudah diaudit.
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <section className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.04)]">
+            <div className="border-b border-[#edf0f4] px-6 py-5">
+              <h2 className="text-lg font-semibold">Kesimpulan AI</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Ringkasan pola tertinggi dan evaluasi yang perlu dilakukan.
               </p>
-            </CardHeader>
-            <CardContent className="space-y-4">
+            </div>
+            <div className="space-y-4 p-6">
               {isLoading ? (
-                <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">
+                <div className="rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-4 text-sm text-muted-foreground">
                   Memuat analisis keluhan siswa...
                 </div>
               ) : null}
 
               {!isLoading && !patterns.length ? (
-                <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                <div className="rounded-xl border border-dashed border-[#d8deea] p-6 text-center text-sm text-muted-foreground">
                   Belum ada data keluhan siswa pada periode ini.
                 </div>
               ) : null}
 
               {!isLoading && topPattern ? (
                 <>
-                  <div className="rounded-lg border bg-background p-4">
+                  <div className="rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-4">
                     <div className="flex items-start gap-3">
-                      <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#eef2ff] text-[#0528f2]">
                         <BrainCircuitIcon className="size-5" />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <p className="text-sm font-semibold">
                           {analysis?.summary.conclusion}
                         </p>
-                        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                        <p className="mt-1 text-sm leading-6 text-muted-foreground">
                           Pola teratas adalah {topPattern.symptom.toLowerCase()}{" "}
                           dengan{" "}
                           {topPattern.totalStudents.toLocaleString("id-ID")} siswa
@@ -233,37 +262,37 @@ export function ComplaintPatternsAiPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-lg border bg-muted/20 p-4">
+                  <div className="rounded-xl border border-[#edf0f4] bg-white p-4">
                     <div className="flex flex-wrap items-center gap-2">
                       <span
                         className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getCategoryClass(topPattern.category)}`}
                       >
                         Kategori {topPattern.category}
                       </span>
-                      <span className="rounded-full border bg-background px-2.5 py-1 text-xs font-medium">
+                      <span className="rounded-full border border-[#edf0f4] bg-[#f8fafc] px-2.5 py-1 text-xs font-semibold">
                         Confidence {formatPercent(topPattern.confidence)}
                       </span>
                       <span className="text-xs text-muted-foreground">
                         Update terakhir {formatDateTime(topPattern.latestDate)}
                       </span>
                     </div>
-                    <p className="mt-3 text-sm font-medium">
+                    <p className="mt-4 text-sm font-semibold">
                       Rekomendasi tindak lanjut
                     </p>
-                    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
                       {topPattern.action}
                     </p>
                   </div>
 
                   {analysis?.summary.evaluationFocus.length ? (
-                    <div className="rounded-lg border bg-background p-4">
+                    <div className="rounded-xl border border-[#edf0f4] bg-white p-4">
                       <div className="flex items-center gap-2">
-                        <AlertTriangleIcon className="size-4 text-primary" />
-                        <p className="text-sm font-medium">
+                        <AlertTriangleIcon className="size-4 text-[#0528f2]" />
+                        <p className="text-sm font-semibold">
                           Yang harus dievaluasi SPPG
                         </p>
                       </div>
-                      <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-muted-foreground">
+                      <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm leading-6 text-muted-foreground">
                         {analysis.summary.evaluationFocus.map((focus) => (
                           <li key={focus}>{focus}</li>
                         ))}
@@ -272,23 +301,30 @@ export function ComplaintPatternsAiPage() {
                   ) : null}
                 </>
               ) : null}
-            </CardContent>
-          </Card>
+            </div>
+          </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Pola Terdeteksi</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Diurutkan berdasarkan kategori, jumlah siswa, frekuensi, dan
-                confidence.
-              </p>
-            </CardHeader>
-            <CardContent>
+          <section className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-col gap-2 border-b border-[#edf0f4] px-6 py-5 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Pola Terdeteksi</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Diurutkan dari pola dengan risiko dan dampak tertinggi.
+                </p>
+              </div>
+              <span className="w-fit rounded-full border border-[#edf0f4] bg-[#f8fafc] px-3 py-1.5 text-sm font-semibold">
+                {patterns.length.toLocaleString("id-ID")} pola
+              </span>
+            </div>
+            <div className="p-6">
               <div className="space-y-3">
                 {patterns.map((pattern) => (
-                  <div key={pattern.symptom} className="rounded-lg border p-4">
+                  <div
+                    key={pattern.symptom}
+                    className="rounded-xl border border-[#edf0f4] bg-white p-4"
+                  >
                     <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <h3 className="text-sm font-semibold">
                             {pattern.symptom}
@@ -298,11 +334,11 @@ export function ComplaintPatternsAiPage() {
                           >
                             {pattern.category}
                           </span>
-                          <span className="rounded-full border bg-muted/30 px-2.5 py-1 text-xs font-medium">
+                          <span className="rounded-full border border-[#edf0f4] bg-[#f8fafc] px-2.5 py-1 text-xs font-semibold">
                             {formatPercent(pattern.confidence)}
                           </span>
                         </div>
-                        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">
                           {pattern.totalComplaints.toLocaleString("id-ID")}{" "}
                           keluhan,{" "}
                           {pattern.totalStudents.toLocaleString("id-ID")} siswa
@@ -311,7 +347,7 @@ export function ComplaintPatternsAiPage() {
                           sekolah.
                         </p>
                       </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
                         <ActivityIcon className="size-4" />
                         {formatDateTime(pattern.latestDate)}
                       </div>
@@ -321,13 +357,13 @@ export function ComplaintPatternsAiPage() {
                       {pattern.schools.slice(0, 4).map((school) => (
                         <span
                           key={school}
-                          className="rounded-full border bg-muted/30 px-2.5 py-1 text-xs font-medium"
+                          className="rounded-full border border-[#edf0f4] bg-[#f8fafc] px-2.5 py-1 text-xs font-medium"
                         >
                           {school}
                         </span>
                       ))}
                       {pattern.schools.length > 4 ? (
-                        <span className="rounded-full border bg-muted/30 px-2.5 py-1 text-xs font-medium">
+                        <span className="rounded-full border border-[#edf0f4] bg-[#f8fafc] px-2.5 py-1 text-xs font-medium">
                           +{pattern.schools.length - 4} sekolah
                         </span>
                       ) : null}
@@ -338,7 +374,7 @@ export function ComplaintPatternsAiPage() {
                         {pattern.matchedTerms.map((term) => (
                           <span
                             key={term}
-                            className="rounded-full border border-primary/20 bg-primary/5 px-2.5 py-1 text-xs font-medium text-primary"
+                            className="rounded-full border border-[#dce3ff] bg-[#f7f9ff] px-2.5 py-1 text-xs font-semibold text-[#0528f2]"
                           >
                             {term}
                           </span>
@@ -347,36 +383,34 @@ export function ComplaintPatternsAiPage() {
                     ) : null}
 
                     {pattern.riskReasons.length ? (
-                      <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-sm leading-relaxed text-muted-foreground">
-                        <span className="font-medium text-foreground">
-                          Alasan kategori:
-                        </span>{" "}
+                      <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm leading-6 text-amber-800">
+                        <span className="font-semibold">Alasan kategori:</span>{" "}
                         {pattern.riskReasons.join(" ")}
                       </div>
                     ) : null}
 
                     {pattern.batches.length ? (
-                      <div className="mt-3 space-y-2 rounded-lg border bg-background p-3">
-                        <div className="flex items-center gap-2 text-sm font-medium">
-                          <TruckIcon className="size-4 text-primary" />
+                      <div className="mt-3 space-y-2 rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-3">
+                        <div className="flex items-center gap-2 text-sm font-semibold">
+                          <TruckIcon className="size-4 text-[#0528f2]" />
                           Konteks batch/menu/distribusi
                         </div>
                         {pattern.batches.slice(0, 3).map((batch) => (
                           <div
                             key={batch.id}
-                            className="text-sm leading-relaxed text-muted-foreground"
+                            className="text-sm leading-6 text-muted-foreground"
                           >
-                            <span className="font-medium text-foreground">
+                            <span className="font-semibold text-foreground">
                               {batch.id}
                             </span>{" "}
-                            - {batch.menuName ?? "Menu tidak diketahui"} · status{" "}
-                            {batch.status ?? "-"}
-                            {batch.driverName ? ` · ${batch.driverName}` : ""}
-                            {batch.route ? ` · ${batch.route}` : ""}
+                            - {batch.menuName ?? "Menu tidak diketahui"} -
+                            status {batch.status ?? "-"}
+                            {batch.driverName ? ` - ${batch.driverName}` : ""}
+                            {batch.route ? ` - ${batch.route}` : ""}
                             {batch.distributions[0] ? (
                               <span>
                                 {" "}
-                                · kirim{" "}
+                                - kirim{" "}
                                 {formatDateTime(batch.distributions[0].waktuKirim)}{" "}
                                 ({batch.distributions[0].status})
                               </span>
@@ -386,8 +420,8 @@ export function ComplaintPatternsAiPage() {
                       </div>
                     ) : null}
 
-                    <div className="mt-3 rounded-lg bg-muted/30 p-3 text-sm leading-relaxed text-muted-foreground">
-                      <span className="font-medium text-foreground">
+                    <div className="mt-3 rounded-xl bg-[#fbfcff] p-3 text-sm leading-6 text-muted-foreground">
+                      <span className="font-semibold text-foreground">
                         Saran AI:
                       </span>{" "}
                       {pattern.action}
@@ -395,8 +429,8 @@ export function ComplaintPatternsAiPage() {
                   </div>
                 ))}
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          </section>
         </div>
 
         {analysis ? (

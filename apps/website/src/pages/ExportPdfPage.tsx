@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
   BarChart3Icon,
+  CalendarDaysIcon,
+  CheckIcon,
   ClipboardListIcon,
   DownloadIcon,
   FileTextIcon,
@@ -10,7 +12,6 @@ import {
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   api,
   type DashboardAnalytics,
@@ -508,6 +509,13 @@ export function ExportPdfPage() {
   const cachedComplaints = getCachedPageData<StudentComplaint[]>(
     pageCacheKeys.studentComplaints
   )
+  const hasCachedExportData = Boolean(
+    cachedAnalytics &&
+      cachedBatches &&
+      cachedDistributions &&
+      cachedFoodReports &&
+      cachedComplaints
+  )
   const [selectedReports, setSelectedReports] = useState<ReportType[]>([
     "production",
     "distribution",
@@ -523,13 +531,7 @@ export function ExportPdfPage() {
     foodReports: cachedFoodReports ?? [],
     studentComplaints: cachedComplaints ?? [],
   })
-  const [isLoading, setIsLoading] = useState(
-    !cachedAnalytics ||
-      !cachedBatches ||
-      !cachedDistributions ||
-      !cachedFoodReports ||
-      !cachedComplaints
-  )
+  const [isLoading, setIsLoading] = useState(!hasCachedExportData)
   const [error, setError] = useState<string | null>(null)
 
   const loadData = useCallback(async () => {
@@ -583,12 +585,16 @@ export function ExportPdfPage() {
   }, [])
 
   useEffect(() => {
+    if (hasCachedExportData) {
+      return
+    }
+
     const timer = window.setTimeout(() => {
       void loadData()
     }, 0)
 
     return () => window.clearTimeout(timer)
-  }, [loadData])
+  }, [hasCachedExportData, loadData])
 
   const filteredData = useMemo(
     () => filterExportData(data, dateFrom, dateTo),
@@ -731,73 +737,72 @@ export function ExportPdfPage() {
 
   return (
     <DashboardShell title="Export Laporan PDF">
-      <div className="space-y-4">
-        <section className="rounded-lg border bg-card p-5">
-          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-            <div className="max-w-2xl">
-              <p className="text-sm font-medium text-primary">Laporan</p>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-                Export Laporan PDF
-              </h1>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                Susun laporan produksi, distribusi, risiko, dan keluhan dalam
-                template PDF yang siap dibagikan untuk evaluasi operasional.
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={loadData}
-                pending={isLoading}
-                disabled={isLoading}
-              >
-                <RefreshCwIcon className="size-4" />
-                Refresh
-              </Button>
-              <Button
-                onClick={handleDownloadPdf}
-                disabled={isLoading || Boolean(dateRangeError)}
-              >
-                <DownloadIcon className="size-4" />
-                Download PDF
-              </Button>
-            </div>
+      <div className="space-y-6">
+        <section className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-semibold tracking-tight">
+              Export Laporan PDF
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Pilih periode dan bagian laporan yang ingin dicetak menjadi PDF.
+            </p>
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <Button
+              variant="outline"
+              className="h-10 cursor-pointer rounded-xl border-[#e3e7ef] bg-white"
+              onClick={loadData}
+              pending={isLoading}
+              disabled={isLoading}
+            >
+              <RefreshCwIcon className="size-4" />
+              Refresh
+            </Button>
+            <Button
+              className="h-10 cursor-pointer rounded-xl bg-[#0528f2] px-4 text-white hover:bg-[#0528f2]"
+              onClick={handleDownloadPdf}
+              disabled={isLoading || Boolean(dateRangeError)}
+            >
+              <DownloadIcon className="size-4" />
+              Download PDF
+            </Button>
           </div>
         </section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Parameter Export</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Tentukan periode laporan agar PDF hanya berisi data yang relevan.
-            </p>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
-              <label className="space-y-2">
-                <span className="text-sm font-medium">Tanggal Mulai</span>
+        <section className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-col gap-2 border-b border-[#edf0f4] px-6 py-5 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Parameter Laporan</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Data PDF akan mengikuti periode yang dipilih.
+              </p>
+            </div>
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[#edf0f4] bg-[#f8fafc] px-3 py-1.5 text-sm font-semibold">
+              <CalendarDaysIcon className="size-4 text-[#0528f2]" />
+              {dateRangeLabel}
+            </div>
+          </div>
+
+          <div className="space-y-4 p-6">
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="grid gap-2 text-sm font-medium">
+                Tanggal Mulai
                 <input
                   type="date"
                   value={dateFrom}
                   onChange={(event) => setDateFrom(event.target.value)}
-                  className="h-9 w-full rounded-lg border bg-background px-3 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/50"
+                  className="h-11 w-full rounded-xl border border-[#e3e7ef] bg-white px-3 text-sm outline-none transition focus:border-[#0528f2] focus:ring-3 focus:ring-[#0528f2]/10"
                 />
               </label>
-              <label className="space-y-2">
-                <span className="text-sm font-medium">Tanggal Akhir</span>
+              <label className="grid gap-2 text-sm font-medium">
+                Tanggal Akhir
                 <input
                   type="date"
                   value={dateTo}
                   onChange={(event) => setDateTo(event.target.value)}
-                  className="h-9 w-full rounded-lg border bg-background px-3 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/50"
+                  className="h-11 w-full rounded-xl border border-[#e3e7ef] bg-white px-3 text-sm outline-none transition focus:border-[#0528f2] focus:ring-3 focus:ring-[#0528f2]/10"
                 />
               </label>
-              <div className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-                <span className="block text-xs text-muted-foreground">
-                  Periode
-                </span>
-                <span className="font-semibold">{dateRangeLabel}</span>
-              </div>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -805,6 +810,7 @@ export function ExportPdfPage() {
                 type="button"
                 variant="outline"
                 size="sm"
+                className="cursor-pointer rounded-full border-[#e3e7ef] bg-white"
                 onClick={() => applyDatePreset("today")}
               >
                 Hari Ini
@@ -813,6 +819,7 @@ export function ExportPdfPage() {
                 type="button"
                 variant="outline"
                 size="sm"
+                className="cursor-pointer rounded-full border-[#e3e7ef] bg-white"
                 onClick={() => applyDatePreset("week")}
               >
                 7 Hari
@@ -821,6 +828,7 @@ export function ExportPdfPage() {
                 type="button"
                 variant="outline"
                 size="sm"
+                className="cursor-pointer rounded-full border-[#e3e7ef] bg-white"
                 onClick={() => applyDatePreset("thirty")}
               >
                 30 Hari
@@ -829,6 +837,7 @@ export function ExportPdfPage() {
                 type="button"
                 variant="outline"
                 size="sm"
+                className="cursor-pointer rounded-full border-[#e3e7ef] bg-white"
                 onClick={() => applyDatePreset("month")}
               >
                 Bulan Ini
@@ -837,6 +846,7 @@ export function ExportPdfPage() {
                 type="button"
                 variant="ghost"
                 size="sm"
+                className="cursor-pointer rounded-full text-muted-foreground hover:bg-[#f7f9ff] hover:text-[#0528f2]"
                 onClick={() => applyDatePreset("all")}
               >
                 Semua Data
@@ -844,22 +854,22 @@ export function ExportPdfPage() {
             </div>
 
             {dateRangeError && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+              <div className="rounded-xl border border-red-100 bg-red-50 p-3 text-sm font-medium text-red-600">
                 {dateRangeError}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </section>
 
-        <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Jenis Laporan</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Pilih bagian yang ingin masuk ke dokumen PDF.
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+          <section className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.04)]">
+            <div className="border-b border-[#edf0f4] px-6 py-5">
+              <h2 className="text-lg font-semibold">Jenis Laporan</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Pilih bagian yang ingin dimasukkan ke dokumen.
               </p>
-            </CardHeader>
-            <CardContent className="space-y-3">
+            </div>
+            <div className="space-y-3 p-6">
               {reportOptions.map((option) => {
                 const Icon = option.icon
                 const checked = selectedReports.includes(option.value)
@@ -867,20 +877,32 @@ export function ExportPdfPage() {
                 return (
                   <label
                     key={option.value}
-                    className={`flex cursor-pointer gap-3 rounded-lg border p-4 transition-colors ${
+                    className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors ${
                       checked
-                        ? "border-primary/40 bg-primary/5"
-                        : "hover:bg-muted/50"
+                        ? "border-[#0528f2] bg-[#f7f9ff]"
+                        : "border-[#edf0f4] bg-white hover:bg-[#fbfcff]"
                     }`}
                   >
                     <input
                       type="checkbox"
-                      className="mt-1"
+                      className="sr-only"
                       checked={checked}
                       onChange={() => toggleReport(option.value)}
                     />
-                    <Icon className="mt-0.5 size-5 shrink-0 text-primary" />
-                    <span>
+                    <span
+                      className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${
+                        checked
+                          ? "bg-[#0528f2] text-white"
+                          : "bg-[#eef2ff] text-[#0528f2]"
+                      }`}
+                    >
+                      {checked ? (
+                        <CheckIcon className="size-5" />
+                      ) : (
+                        <Icon className="size-5" />
+                      )}
+                    </span>
+                    <span className="min-w-0">
                       <span className="block text-sm font-semibold">
                         {option.label}
                       </span>
@@ -891,28 +913,36 @@ export function ExportPdfPage() {
                   </label>
                 )
               })}
-            </CardContent>
-          </Card>
+            </div>
+          </section>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Preview Isi PDF</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Ringkasan data pada periode terpilih yang akan masuk ke PDF.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-4">
+          <section className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-col gap-2 border-b border-[#edf0f4] px-6 py-5 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold">Preview Isi PDF</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Ringkasan data yang akan masuk ke file laporan.
+                </p>
+              </div>
+              <span className="w-fit rounded-full border border-[#edf0f4] bg-[#f8fafc] px-3 py-1.5 text-sm font-semibold">
+                {selectedReports.length} bagian dipilih
+              </span>
+            </div>
+            <div className="space-y-4 p-6">
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 {previewStats.map((item) => {
                   const Icon = item.icon
 
                   return (
-                    <div key={item.label} className="rounded-lg border p-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-xs font-medium text-muted-foreground">
+                    <div
+                      key={item.label}
+                      className="rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-4"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-semibold text-muted-foreground">
                           {item.label}
                         </span>
-                        <Icon className="size-4 text-primary" />
+                        <Icon className="size-4 shrink-0 text-[#0528f2]" />
                       </div>
                       <p className="mt-3 text-2xl font-bold">
                         {isLoading
@@ -927,12 +957,12 @@ export function ExportPdfPage() {
               </div>
 
               {error && (
-                <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                <div className="rounded-xl border border-red-100 bg-red-50 p-3 text-sm font-medium text-red-600">
                   {error}
                 </div>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </section>
         </div>
       </div>
     </DashboardShell>

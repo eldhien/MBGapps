@@ -95,7 +95,7 @@ export function BatchCreatePage() {
         foto: [...(result.foto ?? []), uploadedPhoto],
       }
 
-      const cachedBatches = getCachedPageData<any[]>(
+      const cachedBatches = getCachedPageData<unknown[]>(
         pageCacheKeys.productionBatches
       )
       if (cachedBatches) {
@@ -108,8 +108,8 @@ export function BatchCreatePage() {
       navigate("/batch", {
         state: { success: "Batch berhasil disimpan." },
       })
-    } catch (err: any) {
-      setError(err.message || "Gagal membuat batch")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Gagal membuat batch")
     } finally {
       setIsLoading(false)
     }
@@ -128,7 +128,7 @@ export function BatchCreatePage() {
 
       <form
         onSubmit={handleSubmit}
-        className="w-full min-w-0 space-y-6 overflow-x-hidden"
+        className="w-full max-w-full min-w-0 space-y-6 overflow-x-hidden"
       >
         <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
@@ -141,9 +141,9 @@ export function BatchCreatePage() {
           </div>
         </div>
 
-        <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="grid w-full max-w-full min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]">
           <div className="min-w-0 space-y-6">
-            <section className="grid min-w-0 gap-4 md:grid-cols-2">
+            <section className="grid w-full min-w-0 gap-4 md:grid-cols-2">
               <label className="grid min-w-0 gap-2 text-sm font-medium">
                 Nama Menu
                 <Input
@@ -273,9 +273,8 @@ export function BatchCreatePage() {
                 </div>
               </div>
 
-              <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-[#d8deea] bg-white px-4 py-5 text-center transition hover:border-[#0528f2] hover:bg-[#f7f9ff]">
+              <label className="relative flex min-h-36 cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border border-dashed border-[#d8deea] bg-white px-4 py-5 text-center transition hover:border-[#0528f2] hover:bg-[#f7f9ff]">
                 <Input
-                  required
                   type="file"
                   accept="image/*"
                   className="sr-only"

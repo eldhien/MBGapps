@@ -4,9 +4,11 @@ import { ProtectedRoute } from "@/features/auth/ProtectedRoute"
 import { RoleRoute } from "@/features/navigation/RoleRoute"
 import { navigationPages } from "@/features/navigation/navigation"
 import { ComingSoonPage } from "@/pages/ComingSoonPage"
+import { ComplaintPatternsAiPage } from "@/pages/ComplaintPatternsAiPage"
 import { DashboardPage } from "@/pages/DashboardPage"
 import { DistributionPage } from "@/pages/DistributionPage"
 import { DriversPage } from "@/pages/DriversPage"
+import { ExportPdfPage } from "@/pages/ExportPdfPage"
 import { FoodReportsPage } from "@/pages/FoodReportsPage"
 import { KitchenChecklistPage } from "@/pages/KitchenChecklistPage"
 import { LoginPage } from "@/pages/LoginPage"
@@ -255,12 +257,7 @@ export function App() {
           path="/reports/export-pdf"
           element={
             <RoleRoute>
-              <ComingSoonPage
-                title="Export Laporan PDF"
-                features={[
-                  "Export laporan PDF: produksi, distribusi, risiko, keluhan.",
-                ]}
-              />
+              <ExportPdfPage />
             </RoleRoute>
           }
         />
@@ -268,12 +265,7 @@ export function App() {
           path="/reports/complaint-patterns-ai"
           element={
             <RoleRoute>
-              <ComingSoonPage
-                title="Deteksi Pola Keluhan Siswa (AI)"
-                features={[
-                  "Deteksi pola keluhan siswa lintas sekolah untuk evaluasi SPPG.",
-                ]}
-              />
+              <ComplaintPatternsAiPage />
             </RoleRoute>
           }
         />

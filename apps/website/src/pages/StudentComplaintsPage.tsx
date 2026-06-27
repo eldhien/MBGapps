@@ -13,6 +13,7 @@ import type {
   BatchSummary,
   DashboardAnalytics,
   SchoolAccount,
+  SchoolDistribution,
   StudentComplaint,
 } from "@/lib/api"
 import { api } from "@/lib/api"
@@ -78,6 +79,30 @@ const initialForm = {
   waktuKejadian: getCurrentDateTimeLocal(),
 }
 
+function mapSchoolDistributionsToBatches(
+  distributions: SchoolDistribution[]
+): BatchSummary[] {
+  const batchById = new Map<string, BatchSummary>()
+
+  distributions.forEach((item) => {
+    if (!batchById.has(item.batch.id)) {
+      batchById.set(item.batch.id, {
+        id: item.batch.id,
+        batchIdUnik: item.batch.id,
+        jumlahPorsi: item.jumlahPorsi,
+        namaMenu: item.batch.menu?.name ?? "Menu tidak diketahui",
+        status: item.status,
+        waktuProduksi:
+          item.batch.createdAt ??
+          item.distribution.waktuKirim ??
+          new Date().toISOString(),
+      })
+    }
+  })
+
+  return Array.from(batchById.values())
+}
+
 const COMPLAINTS_PER_PAGE = 10
 
 export function StudentComplaintsPage({
@@ -110,87 +135,98 @@ export function StudentComplaintsPage({
     1,
     Math.ceil(complaints.length / COMPLAINTS_PER_PAGE)
   )
+  const activePage = Math.min(currentPage, totalPages)
   const paginatedComplaints = complaints.slice(
-    (currentPage - 1) * COMPLAINTS_PER_PAGE,
-    currentPage * COMPLAINTS_PER_PAGE
+    (activePage - 1) * COMPLAINTS_PER_PAGE,
+    activePage * COMPLAINTS_PER_PAGE
   )
 
   useEffect(() => {
-    void loadData()
-  }, [])
+    const timer = window.setTimeout(() => {
+      let usedCache = false
 
-  useEffect(() => {
-    setCurrentPage((page) => Math.min(page, totalPages))
-  }, [totalPages])
-
-  const loadData = async (force = false) => {
-    let usedCache = false
-
-    if (!force) {
-      const complaintsCache = getCachedPageData<StudentComplaint[]>(
-        pageCacheKeys.studentComplaints
-      )
-      const batchesCache = getCachedPageData<BatchSummary[]>(
-        pageCacheKeys.batches
-      )
-
-      if (complaintsCache) {
-        setComplaints(complaintsCache)
-        setBatches(batchesCache ?? [])
-        setLoading(false)
-        usedCache = true
-      }
-    }
-
-    if (!usedCache) setLoading(true)
-    setError(null)
-
-    try {
-      const [complaintsResponse, batchesResponse, schoolsResponse] =
-        await Promise.allSettled([
-          api.studentComplaints.list(),
-          api.batches.list(),
-          profile?.role === "SEKOLAH"
-            ? Promise.resolve({ schools: [] as SchoolAccount[] })
-            : api.schoolAccounts.list(),
-        ])
-
-      if (complaintsResponse.status === "fulfilled") {
-        setComplaints(
-          setCachedPageData(
-            pageCacheKeys.studentComplaints,
-            complaintsResponse.value.data
-          )
+      async function loadData() {
+        const complaintsCache = getCachedPageData<StudentComplaint[]>(
+          pageCacheKeys.studentComplaints
         )
-      } else if (!usedCache) {
-        throw complaintsResponse.reason
+        const batchesCache = getCachedPageData<BatchSummary[]>(
+          pageCacheKeys.batches
+        )
+
+        if (complaintsCache) {
+          setComplaints(complaintsCache)
+          setBatches(batchesCache ?? [])
+          setLoading(false)
+          usedCache = true
+        }
+
+        if (!usedCache) setLoading(true)
+        setError(null)
+
+        try {
+          const [complaintsResponse, batchesResponse, schoolsResponse] =
+            await Promise.allSettled([
+              api.studentComplaints.list(),
+              profile?.role === "SEKOLAH"
+                ? api.schoolDistributions
+                    .list()
+                    .then((response) => ({
+                      data: mapSchoolDistributionsToBatches(
+                        response.distributions
+                      ),
+                    }))
+                    .catch(() => api.batches.list())
+                : api.batches.list(),
+              profile?.role === "SEKOLAH"
+                ? Promise.resolve({ schools: [] as SchoolAccount[] })
+                : api.schoolAccounts.list(),
+            ])
+
+          if (complaintsResponse.status === "fulfilled") {
+            setComplaints(
+              setCachedPageData(
+                pageCacheKeys.studentComplaints,
+                complaintsResponse.value.data
+              )
+            )
+          } else if (!usedCache) {
+            throw complaintsResponse.reason
+          }
+
+          if (batchesResponse.status === "fulfilled") {
+            setBatches(
+              setCachedPageData(
+                pageCacheKeys.batches,
+                batchesResponse.value.data
+              )
+            )
+          } else {
+            setBatches([])
+          }
+
+          if (
+            schoolsResponse.status === "fulfilled" &&
+            schoolsResponse.value.schools.length
+          ) {
+            setSchools(
+              setCachedPageData(
+                pageCacheKeys.schoolAccounts,
+                schoolsResponse.value.schools
+              )
+            )
+          }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Terjadi kesalahan.")
+        } finally {
+          setLoading(false)
+        }
       }
 
-      if (batchesResponse.status === "fulfilled") {
-        setBatches(
-          setCachedPageData(pageCacheKeys.batches, batchesResponse.value.data)
-        )
-      } else {
-        setBatches([])
-      }
+      void loadData()
+    }, 0)
 
-      if (
-        schoolsResponse.status === "fulfilled" &&
-        schoolsResponse.value.schools.length
-      ) {
-        setSchools(
-          setCachedPageData(
-            pageCacheKeys.schoolAccounts,
-            schoolsResponse.value.schools
-          )
-        )
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Terjadi kesalahan.")
-    } finally {
-      setLoading(false)
-    }
-  }
+    return () => window.clearTimeout(timer)
+  }, [profile?.role])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -466,7 +502,7 @@ export function StudentComplaintsPage({
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-sm">
+              <table className="w-full min-w-190 text-sm">
                 <thead>
                   <tr className="border-b border-[#edf0f4] bg-[#fcfcfd] text-left text-xs tracking-wide text-muted-foreground uppercase">
                     <th className="px-5 py-3 font-semibold">Waktu</th>
@@ -545,7 +581,7 @@ export function StudentComplaintsPage({
                             </td>
                           ) : null}
                           <td className="w-28 px-5 py-4">
-                            <span className="inline-flex whitespace-nowrap rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
+                            <span className="inline-flex rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold whitespace-nowrap text-rose-700">
                               {complaint.jumlahSiswa} siswa
                             </span>
                           </td>
@@ -568,7 +604,7 @@ export function StudentComplaintsPage({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  disabled={currentPage <= 1}
+                  disabled={activePage <= 1}
                   onClick={() =>
                     setCurrentPage((page) => Math.max(1, page - 1))
                   }
@@ -584,7 +620,7 @@ export function StudentComplaintsPage({
                         key={page}
                         type="button"
                         className={
-                          currentPage === page
+                          activePage === page
                             ? "flex size-8 items-center justify-center rounded-lg bg-[#f3f4f6] text-sm font-semibold"
                             : "flex size-8 items-center justify-center rounded-lg text-sm text-muted-foreground hover:bg-[#f7f8fb]"
                         }
@@ -599,7 +635,7 @@ export function StudentComplaintsPage({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  disabled={currentPage >= totalPages}
+                  disabled={activePage >= totalPages}
                   onClick={() =>
                     setCurrentPage((page) => Math.min(totalPages, page + 1))
                   }

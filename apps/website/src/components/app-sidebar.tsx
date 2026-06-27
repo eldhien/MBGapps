@@ -37,8 +37,8 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader className="px-5 pt-5 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-4">
-        <div className="flex h-10 items-center gap-3">
+      <SidebarHeader className="px-5 pt-5 group-data-[collapsible=icon]:px-1.5 group-data-[collapsible=icon]:py-3">
+        <div className="flex h-10 items-center gap-3 group-data-[collapsible=icon]:justify-center">
           <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#0528f2] group-data-[collapsible=icon]:hidden">
             <img
               src={logoSrc}
@@ -54,13 +54,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               {brandSubtitle}
             </p>
           </div>
-          <SidebarTrigger className="ml-auto size-7 cursor-pointer bg-white text-sidebar-foreground/55 shadow-[0_8px_18px_rgba(15,23,42,0.05)] group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:ml-0 hover:bg-white hover:text-sidebar-foreground" />
+          <SidebarTrigger className="ml-auto size-7 cursor-pointer rounded-lg bg-white text-sidebar-foreground/55 shadow-[0_8px_18px_rgba(15,23,42,0.05)] group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:ml-0 group-data-[collapsible=icon]:size-9 group-data-[collapsible=icon]:rounded-xl hover:bg-white hover:text-sidebar-foreground" />
         </div>
       </SidebarHeader>
-      <SidebarContent className="px-4 py-2 group-data-[collapsible=icon]:px-2">
+      <SidebarContent className="px-4 py-2 group-data-[collapsible=icon]:px-1.5 group-data-[collapsible=icon]:py-1">
         <NavMain items={navItems} label="MENU" />
       </SidebarContent>
-      <SidebarFooter className="px-4 pt-3 pb-4 group-data-[collapsible=icon]:px-2">
+      <SidebarFooter className="px-4 pt-3 pb-4 group-data-[collapsible=icon]:px-1.5 group-data-[collapsible=icon]:pt-2 group-data-[collapsible=icon]:pb-3">
         <NavUser
           user={{
             name: userName,

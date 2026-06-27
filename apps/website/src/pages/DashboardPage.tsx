@@ -11,7 +11,6 @@ import {
 import { DashboardShell } from "@/pages/components/DashboardShell"
 import {
   AlertTriangleIcon,
-  CalendarDaysIcon,
   CheckCircle2Icon,
   ClipboardCheckIcon,
   Clock3Icon,
@@ -31,25 +30,21 @@ const emptyAnalytics: DashboardAnalytics = {
   totalFoodReports: 0,
   totalStudentComplaints: 0,
   dailyActivity: [],
+  distributionActivity: [],
+  latestMonitoring: [],
 }
 
-function getCurrentMonthValue() {
+function getLastSevenDaysLabel() {
   const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
-}
+  const start = new Date(now)
+  start.setDate(start.getDate() - 6)
 
-function formatMonthLabel(value: string) {
-  const [year, month] = value.split("-").map(Number)
-  const date = new Date(year, month - 1, 1)
-
-  if (Number.isNaN(date.getTime())) {
-    return "Bulan ini"
-  }
-
-  return date.toLocaleDateString("id-ID", {
-    month: "long",
-    year: "numeric",
+  const formatter = new Intl.DateTimeFormat("id-ID", {
+    day: "numeric",
+    month: "short",
   })
+
+  return `${formatter.format(start)} - ${formatter.format(now)}`
 }
 
 function clampPercentage(value: number) {
@@ -60,21 +55,36 @@ function formatPercentage(value: number) {
   return `${Math.round(clampPercentage(value))}%`
 }
 
+function getEmptyWeeklyActivity() {
+  const today = new Date()
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today)
+    date.setDate(today.getDate() - 6 + index)
+
+    return {
+      label: String(date.getDate()),
+      value: 0,
+    }
+  })
+}
+
 export function DashboardPage() {
-  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthValue)
-  const analyticsCacheKey = `${pageCacheKeys.dashboardAnalytics}:${selectedMonth}`
   const cachedAnalytics = getCachedPageData<DashboardAnalytics>(
-    analyticsCacheKey
+    pageCacheKeys.dashboardAnalytics
   )
   const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(
     cachedAnalytics ?? null
   )
   const [loading, setLoading] = useState(!cachedAnalytics)
   const [error, setError] = useState<string | null>(null)
+  const periodLabel = getLastSevenDaysLabel()
 
   useEffect(() => {
     let isMounted = true
-    let intervalId: number | undefined
+    const hasCachedAnalytics = Boolean(
+      getCachedPageData<DashboardAnalytics>(pageCacheKeys.dashboardAnalytics)
+    )
 
     const load = async (showLoading = false) => {
       if (showLoading) {
@@ -82,14 +92,11 @@ export function DashboardPage() {
       }
 
       try {
-        const response = await api.dashboard.analytics(selectedMonth)
+        const response = await api.dashboard.analytics()
         if (!isMounted) return
         setAnalytics(
-          setCachedPageData(analyticsCacheKey, response.data)
-        )
-        if (selectedMonth === getCurrentMonthValue()) {
           setCachedPageData(pageCacheKeys.dashboardAnalytics, response.data)
-        }
+        )
         setError(null)
       } catch (err) {
         if (isMounted) {
@@ -102,37 +109,29 @@ export function DashboardPage() {
       }
     }
 
-    const monthCache = getCachedPageData<DashboardAnalytics>(analyticsCacheKey)
-    if (monthCache) {
-      setAnalytics(monthCache)
-      setLoading(false)
-    }
-
-    load(!monthCache)
-    intervalId = window.setInterval(() => {
+    void load(!hasCachedAnalytics)
+    const realtimeIntervalId = window.setInterval(() => {
       void load(false)
     }, 15_000)
 
     return () => {
       isMounted = false
-      if (intervalId) {
-        window.clearInterval(intervalId)
-      }
+      window.clearInterval(realtimeIntervalId)
     }
-  }, [analyticsCacheKey, selectedMonth])
+  }, [])
 
   useEffect(() => {
     return subscribePageCache<DashboardAnalytics>(
       pageCacheKeys.dashboardAnalytics,
       () => {
-        if (selectedMonth === getCurrentMonthValue()) {
-          void api.dashboard.analytics(selectedMonth).then((response) => {
-            setAnalytics(setCachedPageData(analyticsCacheKey, response.data))
-          })
-        }
+        void api.dashboard.analytics().then((response) => {
+          setAnalytics(
+            setCachedPageData(pageCacheKeys.dashboardAnalytics, response.data)
+          )
+        })
       }
     )
-  }, [analyticsCacheKey, selectedMonth])
+  }, [])
 
   const data = analytics ?? emptyAnalytics
 
@@ -206,31 +205,33 @@ export function DashboardPage() {
     {
       title: "Jumlah Batch",
       value: data.totalBatches,
-      note: "Bulan terpilih",
+      note: "7 hari terakhir",
       icon: PackageCheckIcon,
     },
     {
       title: "Distribusi Aktif",
       value: data.totalDistributions,
-      note: "Bulan terpilih",
+      note: "7 hari terakhir",
       icon: TruckIcon,
     },
     {
       title: "Laporan Sekolah",
       value: data.totalFoodReports,
-      note: "Bulan terpilih",
+      note: "7 hari terakhir",
       icon: FileWarningIcon,
     },
     {
       title: "Keluhan Siswa",
       value: data.totalStudentComplaints,
-      note: "Bulan terpilih",
+      note: "7 hari terakhir",
       icon: UsersIcon,
     },
   ]
 
   const chartBars = useMemo(() => {
-    const activity = data.dailyActivity?.length ? data.dailyActivity : []
+    const activity = data.dailyActivity?.length
+      ? data.dailyActivity
+      : getEmptyWeeklyActivity()
     const maxValue = Math.max(...activity.map((item) => item.value), 1)
 
     return activity.map((item) => ({
@@ -239,53 +240,48 @@ export function DashboardPage() {
     }))
   }, [data.dailyActivity])
 
-  const monitoringRows = [
-    {
-      id: "MBG-BATCH",
-      category: "Produksi",
-      origin: "Dapur MBG",
-      destination: "Sekolah tujuan",
-      total: data.totalBatches,
-      status: "Tercatat",
-      tone: "success",
-    },
-    {
-      id: "MBG-DIST",
-      category: "Distribusi",
-      origin: "SPPG",
-      destination: "Sekolah",
-      total: data.deliveredDistributions,
-      status: "Diterima",
-      tone: "success",
-    },
-    {
-      id: "MBG-PENDING",
-      category: "Pengiriman",
-      origin: "Dapur MBG",
-      destination: "Dalam proses",
-      total: data.pendingDistributions,
-      status: "Menunggu",
-      tone: "warning",
-    },
-    {
-      id: "MBG-RISK",
-      category: "Monitoring",
-      origin: "Sekolah",
-      destination: "Tim evaluasi",
-      total: summary.totalMonitoringItems,
-      status: summary.riskLabel,
-      tone: summary.riskScore >= 70 ? "danger" : "success",
-    },
-  ]
+  const monitoringRows =
+    data.latestMonitoring && data.latestMonitoring.length > 0
+      ? data.latestMonitoring
+      : [
+          {
+            id: "MBG-MONITOR",
+            category: "Monitoring",
+            origin: "Sistem",
+            destination: "Belum ada data baru",
+            total: 0,
+            status: "Kosong",
+            tone: "warning" as const,
+            updatedAt: new Date().toISOString(),
+          },
+        ]
 
-  const distributionBars = [62, 46, summary.distributionRate || 18, 82]
-  const dayCards = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"].map(
-    (day, index) => ({
-      day,
-      date: String(index + 1).padStart(2, "0"),
-      active: index < Math.round(summary.securityScore / 18),
+  const distributionBars = useMemo(() => {
+    const activity = data.distributionActivity?.length
+      ? data.distributionActivity
+      : getEmptyWeeklyActivity()
+    const maxValue = Math.max(...activity.map((item) => item.value), 1)
+
+    return activity.map((item) => ({
+      ...item,
+      height: clampPercentage((item.value / maxValue) * 100),
+    }))
+  }, [data.distributionActivity])
+  const dayCards = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat("id-ID", { weekday: "short" })
+    const today = new Date()
+
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(today)
+      date.setDate(today.getDate() - 6 + index)
+
+      return {
+        day: formatter.format(date),
+        date: String(date.getDate()).padStart(2, "0"),
+        active: index < Math.round(summary.securityScore / 18),
+      }
     })
-  )
+  }, [summary.securityScore])
 
   return (
     <DashboardShell title="Dashboard" variant="dashboard">
@@ -315,21 +311,9 @@ export function DashboardPage() {
                     Analitik Pengiriman
                   </CardTitle>
                   <p className="text-xs text-muted-foreground">
-                    Ringkasan batch, distribusi, dan laporan masuk pada bulan terpilih.
+                    Ringkasan batch, distribusi, dan laporan masuk 7 hari terakhir.
                   </p>
                 </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="flex h-9 items-center gap-2 rounded-lg border border-[#edf0f4] px-3 text-xs font-medium">
-                  <CalendarDaysIcon className="size-3.5 text-muted-foreground" />
-                  <input
-                    type="month"
-                    value={selectedMonth}
-                    onChange={(event) => setSelectedMonth(event.target.value)}
-                    className="w-32 bg-transparent capitalize outline-none"
-                    aria-label="Pilih bulan grafik"
-                  />
-                </label>
               </div>
             </div>
           </CardHeader>
@@ -365,10 +349,10 @@ export function DashboardPage() {
             <div className="relative h-64 rounded-xl border border-[#eef1f6] bg-white px-4 pt-7 shadow-inner">
               <div className="absolute inset-x-4 top-10 border-t border-dashed border-[#d9dee8]" />
               <div className="absolute top-5 left-5 rounded-md bg-[#20242c] px-2 py-1 text-[10px] font-semibold text-white">
-                {formatMonthLabel(selectedMonth)}
+                7 hari terakhir
               </div>
               <div className="flex h-full items-end gap-1.5">
-                {chartBars.map((item, index) => (
+                {chartBars.map((item) => (
                   <div
                     key={item.label}
                     className="flex flex-1 flex-col items-center justify-end gap-2"
@@ -382,13 +366,9 @@ export function DashboardPage() {
                       style={{ height: `${Math.max(18, item.height * 1.65)}px` }}
                       title={`${item.value} aktivitas pada tanggal ${item.label}`}
                     />
-                    {index % 5 === 0 || index === chartBars.length - 1 ? (
-                      <span className="text-[10px] text-muted-foreground">
-                        {item.label}
-                      </span>
-                    ) : (
-                      <span className="h-3" />
-                    )}
+                    <span className="text-[10px] text-muted-foreground">
+                      {item.label}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -419,7 +399,7 @@ export function DashboardPage() {
                   {loading ? "..." : formatPercentage(summary.securityScore)}
                 </p>
                 <span className="pb-1 text-xs font-medium text-muted-foreground">
-                  {formatMonthLabel(selectedMonth)}
+                  {periodLabel}
                 </span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -491,7 +471,6 @@ export function DashboardPage() {
               <table className="w-full min-w-[720px] text-left text-sm">
                 <thead className="border-y border-[#edf0f4] bg-white text-xs text-muted-foreground">
                   <tr>
-                    <th className="px-5 py-3 font-medium">ID</th>
                     <th className="px-5 py-3 font-medium">Kategori</th>
                     <th className="px-5 py-3 font-medium">Asal</th>
                     <th className="px-5 py-3 font-medium">Tujuan</th>
@@ -502,8 +481,7 @@ export function DashboardPage() {
                 <tbody>
                   {monitoringRows.map((row) => (
                     <tr key={row.id} className="border-b border-[#edf0f4]">
-                      <td className="px-5 py-4 font-semibold">{row.id}</td>
-                      <td className="px-5 py-4 text-muted-foreground">
+                      <td className="px-5 py-4 font-semibold text-[#111827]">
                         {row.category}
                       </td>
                       <td className="px-5 py-4 text-muted-foreground">
@@ -542,7 +520,7 @@ export function DashboardPage() {
             <div>
               <CardTitle className="text-base">Total Distribusi</CardTitle>
               <p className="mt-1 text-xs text-muted-foreground">
-                Distribusi pada {formatMonthLabel(selectedMonth)}
+                Distribusi 7 hari terakhir
               </p>
             </div>
           </CardHeader>
@@ -555,23 +533,24 @@ export function DashboardPage() {
               </p>
             </div>
             <div className="flex h-44 items-end gap-4">
-              {distributionBars.map((height, index) => (
+              {distributionBars.map((item, index) => (
                 <div
-                  key={index}
+                  key={`${item.label}-${index}`}
                   className="flex flex-1 flex-col items-center gap-2"
                 >
                   <div className="flex h-36 w-full max-w-10 items-end rounded-full bg-[#eef0f4]">
                     <div
                       className={
-                        index === 2
+                        item.value > 0
                           ? "w-full rounded-full bg-[#0528f2]"
                           : "w-full rounded-full bg-[#dfe3ec]"
                       }
-                      style={{ height: `${Math.max(18, height)}%` }}
+                      style={{ height: `${Math.max(18, item.height)}%` }}
+                      title={`${item.value} distribusi pada tanggal ${item.label}`}
                     />
                   </div>
                   <span className="text-[10px] text-muted-foreground">
-                    Mg {index + 1}
+                    {item.label}
                   </span>
                 </div>
               ))}

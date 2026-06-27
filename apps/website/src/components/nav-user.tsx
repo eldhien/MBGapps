@@ -74,15 +74,15 @@ export function NavUser({
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="h-12 rounded-xl bg-white px-2 shadow-[0_10px_28px_rgba(15,23,42,0.05)] hover:bg-white data-[state=open]:bg-white data-[state=open]:text-sidebar-foreground"
+              className="h-12 cursor-pointer rounded-xl bg-white px-2 shadow-[0_10px_28px_rgba(15,23,42,0.05)] hover:bg-white hover:shadow-[0_12px_30px_rgba(15,23,42,0.08)] data-[state=open]:bg-white data-[state=open]:text-sidebar-foreground group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-xl group-data-[collapsible=icon]:p-0!"
             >
-              <Avatar className="h-8 w-8 rounded-full">
+              <Avatar className="h-8 w-8 shrink-0 rounded-full group-data-[collapsible=icon]:h-7 group-data-[collapsible=icon]:w-7">
                 <AvatarImage src={user.avatar} alt={user.name} />
                 <AvatarFallback className="rounded-full bg-[#eef1ff] text-xs font-semibold text-[#0528f2]">
                   {fallback}
                 </AvatarFallback>
               </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
+              <div className="grid min-w-0 flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
                 <span className="truncate text-xs font-semibold">
                   {user.name}
                 </span>
@@ -90,36 +90,43 @@ export function NavUser({
                   {user.subtitle}
                 </span>
               </div>
-              <ChevronsUpDownIcon className="ml-auto size-3.5 text-sidebar-foreground/45" />
+              <ChevronsUpDownIcon className="ml-auto size-3.5 text-sidebar-foreground/45 group-data-[collapsible=icon]:hidden" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="w-fit"
+            className="w-56 rounded-2xl border-[#e7ebf3] bg-white p-2 shadow-[0_18px_46px_rgba(15,23,42,0.16)]"
             side={isMobile ? "bottom" : "right"}
             align="end"
-            sideOffset={4}
+            sideOffset={8}
           >
             <DropdownMenuLabel className="p-0 font-normal">
-              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Avatar className="h-8 w-8 rounded-lg">
+              <div className="flex items-center gap-3 rounded-xl bg-[#f8fafc] px-3 py-3 text-left text-sm">
+                <Avatar className="h-10 w-10 rounded-full">
                   <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback>{fallback}</AvatarFallback>
+                  <AvatarFallback className="rounded-full bg-[#eef1ff] text-sm font-semibold text-[#0528f2]">
+                    {fallback}
+                  </AvatarFallback>
                 </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">{user.name}</span>
-                  <span className="truncate text-xs">{user.subtitle}</span>
+                <div className="grid min-w-0 flex-1 text-left leading-tight">
+                  <span className="truncate text-sm font-semibold text-[#111827]">
+                    {user.name}
+                  </span>
+                  <span className="mt-0.5 truncate text-xs text-muted-foreground">
+                    {user.subtitle}
+                  </span>
                 </div>
               </div>
             </DropdownMenuLabel>
-            <DropdownMenuSeparator />
+            <DropdownMenuSeparator className="my-2" />
             <DropdownMenuItem
               variant="destructive"
+              className="h-10 cursor-pointer rounded-xl px-3 text-sm font-semibold text-red-600 focus:bg-red-50 focus:text-red-700"
               onSelect={(event) => {
                 event.preventDefault()
                 setIsLogoutOpen(true)
               }}
             >
-              <LogOutIcon />
+              <LogOutIcon className="size-4" />
               Keluar
             </DropdownMenuItem>
           </DropdownMenuContent>

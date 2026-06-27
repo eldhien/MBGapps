@@ -9,7 +9,13 @@ import {
 } from "@/components/ui/popover"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useAuth } from "@/features/auth/AuthProvider"
-import type { BatchSummary, DashboardAnalytics, SchoolAccount, StudentComplaint } from "@/lib/api"
+import type {
+  BatchSummary,
+  DashboardAnalytics,
+  SchoolAccount,
+  SchoolDistribution,
+  StudentComplaint,
+} from "@/lib/api"
 import { api } from "@/lib/api"
 import {
   getCachedPageData,
@@ -18,7 +24,7 @@ import {
 } from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 import { CalendarIcon, ClockIcon } from "lucide-react"
-import { useEffect, useState, type FormEvent } from "react"
+import { useCallback, useEffect, useState, type FormEvent } from "react"
 
 function getCurrentDateTimeLocal() {
   const now = new Date()
@@ -68,6 +74,30 @@ const initialForm = {
   waktuKejadian: getCurrentDateTimeLocal(),
 }
 
+function mapSchoolDistributionsToBatches(
+  distributions: SchoolDistribution[]
+): BatchSummary[] {
+  const batchById = new Map<string, BatchSummary>()
+
+  distributions.forEach((item) => {
+    if (!batchById.has(item.batch.id)) {
+      batchById.set(item.batch.id, {
+        id: item.batch.id,
+        batchIdUnik: item.batch.id,
+        jumlahPorsi: item.jumlahPorsi,
+        namaMenu: item.batch.menu?.name ?? "Menu tidak diketahui",
+        status: item.status,
+        waktuProduksi:
+          item.batch.createdAt ??
+          item.distribution.waktuKirim ??
+          new Date().toISOString(),
+      })
+    }
+  })
+
+  return Array.from(batchById.values())
+}
+
 export function StudentComplaintsPage({
   mode = "create",
 }: {
@@ -90,15 +120,9 @@ export function StudentComplaintsPage({
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [form, setForm] = useState(initialForm)
-  const selectableBatches = batches.filter(
-    (batch) => ["DITERIMA", "DITOLAK", "SELESAI"].includes(batch.status)
-  )
+  const selectableBatches = batches
 
-  useEffect(() => {
-    void loadData()
-  }, [])
-
-  const loadData = async (force = false) => {
+  const loadData = useCallback(async (force = false) => {
     let usedCache = false
 
     if (!force) {
@@ -123,7 +147,11 @@ export function StudentComplaintsPage({
     try {
       const [complaintsResponse, batchesResponse, schoolsResponse] = await Promise.allSettled([
         api.studentComplaints.list(),
-        api.batches.list(),
+        profile?.role === "SEKOLAH"
+          ? api.schoolDistributions.list().then((response) => ({
+              data: mapSchoolDistributionsToBatches(response.distributions),
+            })).catch(() => api.batches.list())
+          : api.batches.list(),
         profile?.role === "SEKOLAH"
           ? Promise.resolve({ schools: [] as SchoolAccount[] })
           : api.schoolAccounts.list(),
@@ -158,7 +186,15 @@ export function StudentComplaintsPage({
     } finally {
       setLoading(false)
     }
-  }
+  }, [profile])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadData()
+    }, 0)
+
+    return () => window.clearTimeout(timer)
+  }, [loadData])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -369,7 +405,7 @@ export function StudentComplaintsPage({
                   <option value="">Pilih nanti / tidak diketahui</option>
                   {selectableBatches.map((batch) => (
                     <option key={batch.id} value={batch.id}>
-                      {batch.batchIdUnik} · {batch.namaMenu}
+                      {batch.batchIdUnik} - {batch.namaMenu} ({batch.status})
                     </option>
                   ))}
                 </select>

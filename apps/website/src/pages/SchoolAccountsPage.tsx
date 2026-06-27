@@ -1,6 +1,8 @@
 import type React from "react"
 import { useEffect, useMemo, useState } from "react"
 import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
   EyeIcon,
   EyeOffIcon,
   PencilIcon,
@@ -60,6 +62,8 @@ const initialForm: FormState = {
   username: "",
 }
 
+const SCHOOLS_PER_PAGE = 10
+
 export function SchoolAccountsPage() {
   const { profile } = useAuth()
   const cachedSchools = getCachedPageData<SchoolAccount[]>(
@@ -79,6 +83,7 @@ export function SchoolAccountsPage() {
   const [schools, setSchools] = useState<SchoolAccount[]>(
     () => cachedSchools ?? []
   )
+  const [currentPage, setCurrentPage] = useState(1)
   const [sppgUsers, setSppgUsers] = useState<ManagedUser[]>(() =>
     (cachedUsers ?? []).filter((user) => user.role === "SPPG")
   )
@@ -86,6 +91,18 @@ export function SchoolAccountsPage() {
   const sortedSchools = useMemo(
     () => [...schools].sort((a, b) => a.name.localeCompare(b.name)),
     [schools]
+  )
+  const totalPages = Math.max(
+    1,
+    Math.ceil(sortedSchools.length / SCHOOLS_PER_PAGE)
+  )
+  const paginatedSchools = useMemo(
+    () =>
+      sortedSchools.slice(
+        (currentPage - 1) * SCHOOLS_PER_PAGE,
+        currentPage * SCHOOLS_PER_PAGE
+      ),
+    [currentPage, sortedSchools]
   )
 
   async function loadData() {
@@ -107,7 +124,9 @@ export function SchoolAccountsPage() {
           : Promise.resolve({ users: [] }),
       ])
 
-      setSchools(setCachedPageData(pageCacheKeys.schoolAccounts, schoolResponse.schools))
+      setSchools(
+        setCachedPageData(pageCacheKeys.schoolAccounts, schoolResponse.schools)
+      )
       if (profile?.role === "SUPER_ADMIN") {
         setCachedPageData(pageCacheKeys.users, usersResponse.users)
       }
@@ -126,6 +145,10 @@ export function SchoolAccountsPage() {
       void loadData()
     }
   }, [profile?.role])
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages))
+  }, [totalPages])
 
   function openCreateDialog() {
     setDialogError(null)
@@ -254,124 +277,133 @@ export function SchoolAccountsPage() {
       ) : null}
 
       <section className="pb-1">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Master data
-          </p>
+        <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             Akun Sekolah
           </h1>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Kelola akun sekolah dan alamat sekolah untuk akses distribusi dari SPPG.
+            Kelola akun sekolah dan alamat sekolah untuk akses distribusi dari
+            SPPG.
           </p>
         </div>
       </section>
 
-      <section className="rounded-lg border bg-card text-card-foreground">
-        <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
+      <section className="overflow-hidden rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.05)]">
+        <div className="flex flex-col gap-4 border-b border-[#edf0f4] p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-lg font-semibold">Daftar akun sekolah</h1>
-            {isLoading ? (
-              <Skeleton className="mt-2 h-4 w-36" />
-            ) : (
-              <p className="mt-1 text-sm text-muted-foreground">
-                {sortedSchools.length} sekolah terhubung
-              </p>
-            )}
+            <div className="flex items-center gap-1">
+              <h1 className="text-lg font-semibold tracking-tight">
+                Daftar akun sekolah
+              </h1>
+              <span className="text-lg font-semibold text-muted-foreground">
+                {isLoading ? "..." : sortedSchools.length}
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Data sekolah, akun login, dan SPPG penanggung jawab.
+            </p>
           </div>
-          <Button onClick={openCreateDialog}>
+          <Button
+            onClick={openCreateDialog}
+            className="h-10 rounded-lg bg-[#0528f2] px-4 text-white hover:bg-[#0422c8]"
+          >
             <UserRoundPlusIcon />
             Tambah akun sekolah
           </Button>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[960px] text-sm">
             <thead>
-              <tr className="border-b text-left text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Sekolah</th>
-                <th className="px-4 py-3 font-medium">Username</th>
-                <th className="px-4 py-3 font-medium">SPPG</th>
-                <th className="px-4 py-3 font-medium">Dibuat</th>
-                <th className="px-4 py-3 text-right font-medium">Aksi</th>
+              <tr className="border-b border-[#edf0f4] bg-[#fcfcfd] text-left text-xs text-muted-foreground">
+                <th className="px-5 py-3 font-medium">Sekolah</th>
+                <th className="px-5 py-3 font-medium">Username</th>
+                <th className="px-5 py-3 font-medium">SPPG</th>
+                <th className="px-5 py-3 font-medium">Dibuat</th>
+                <th className="px-5 py-3 text-right font-medium">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {isLoading
-                ? Array.from({ length: 4 }).map((_, index) => (
-                    <tr key={index} className="border-b last:border-0">
-                      <td className="px-4 py-3">
+                ? Array.from({ length: 6 }).map((_, index) => (
+                    <tr key={index} className="border-b border-[#edf0f4]">
+                      <td className="px-5 py-4">
                         <Skeleton className="h-4 w-44" />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4">
                         <Skeleton className="h-4 w-28" />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4">
                         <Skeleton className="h-4 w-28" />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4">
                         <Skeleton className="h-4 w-20" />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4">
                         <Skeleton className="ml-auto h-8 w-28" />
                       </td>
                     </tr>
                   ))
                 : null}
-              {sortedSchools.map((school) => (
-                <tr key={school.id} className="border-b last:border-0">
-                  <td className="px-4 py-3">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-0.5 rounded-md bg-primary/10 p-2 text-primary">
-                        <SchoolIcon className="size-4" />
+              {!isLoading &&
+                paginatedSchools.map((school) => (
+                  <tr
+                    key={school.id}
+                    className="border-b border-[#edf0f4] last:border-0 hover:bg-[#fcfcfd]"
+                  >
+                    <td className="px-5 py-4">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-0.5 rounded-lg bg-[#eef2ff] p-2 text-[#0528f2]">
+                          <SchoolIcon className="size-4" />
+                        </div>
+                        <div>
+                          <p className="font-semibold">{school.name}</p>
+                          <p className="mt-1 max-w-md text-xs text-muted-foreground">
+                            {school.address || "Alamat belum diisi"}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium">{school.name}</p>
-                        <p className="mt-1 max-w-md text-xs text-muted-foreground">
-                          {school.address || "Alamat belum diisi"}
-                        </p>
+                    </td>
+                    <td className="px-5 py-4 font-medium">
+                      {school.account?.username ?? "-"}
+                    </td>
+                    <td className="px-5 py-4 text-muted-foreground">
+                      {school.sppg.username}
+                    </td>
+                    <td className="px-5 py-4 text-muted-foreground">
+                      {new Date(school.createdAt).toLocaleDateString("id-ID")}
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-lg border-[#e3e7ef]"
+                          onClick={() => openEditDialog(school)}
+                        >
+                          <PencilIcon />
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-lg border-red-100 text-red-600 hover:bg-red-50 hover:text-red-700"
+                          onClick={() => setDeleteTarget(school)}
+                        >
+                          <Trash2Icon />
+                          Hapus
+                        </Button>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-medium">
-                    {school.account?.username ?? "-"}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {school.sppg.username}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {new Date(school.createdAt).toLocaleDateString("id-ID")}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openEditDialog(school)}
-                      >
-                        <PencilIcon />
-                        Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => setDeleteTarget(school)}
-                      >
-                        <Trash2Icon />
-                        Delete
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                  </tr>
+                ))}
               {!isLoading && sortedSchools.length === 0 ? (
                 <tr>
                   <td
                     colSpan={5}
-                    className="px-4 py-8 text-center text-muted-foreground"
+                    className="px-5 py-10 text-center text-muted-foreground"
                   >
                     Belum ada akun sekolah.
                   </td>
@@ -380,6 +412,51 @@ export function SchoolAccountsPage() {
             </tbody>
           </table>
         </div>
+
+        {!isLoading && sortedSchools.length > SCHOOLS_PER_PAGE ? (
+          <div className="flex items-center justify-center gap-2 border-t border-[#edf0f4] p-4">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+            >
+              <ChevronLeftIcon />
+            </Button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }).map((_, index) => {
+                const page = index + 1
+
+                return (
+                  <button
+                    key={page}
+                    type="button"
+                    className={
+                      currentPage === page
+                        ? "flex size-8 items-center justify-center rounded-lg bg-[#f3f4f6] text-sm font-semibold"
+                        : "flex size-8 items-center justify-center rounded-lg text-sm text-muted-foreground hover:bg-[#f7f8fb]"
+                    }
+                    onClick={() => setCurrentPage(page)}
+                  >
+                    {page}
+                  </button>
+                )
+              })}
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={currentPage >= totalPages}
+              onClick={() =>
+                setCurrentPage((page) => Math.min(totalPages, page + 1))
+              }
+            >
+              <ChevronRightIcon />
+            </Button>
+          </div>
+        ) : null}
       </section>
 
       <Dialog
@@ -520,22 +597,31 @@ export function SchoolAccountsPage() {
               >
                 Batal
               </Button>
-              <Button type="submit" pending={isSubmitting} disabled={isSubmitting}>
+              <Button
+                type="submit"
+                pending={isSubmitting}
+                disabled={isSubmitting}
+              >
                 <PlusIcon />
                 {isSubmitting
                   ? form.id
                     ? "Menyimpan..."
                     : "Menambah..."
                   : form.id
-                  ? "Simpan"
-                  : "Tambah"}
+                    ? "Simpan"
+                    : "Tambah"}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && !isDeletingSchool && setDeleteTarget(null)}>
+      <AlertDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) =>
+          !open && !isDeletingSchool && setDeleteTarget(null)
+        }
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia>
@@ -543,11 +629,14 @@ export function SchoolAccountsPage() {
             </AlertDialogMedia>
             <AlertDialogTitle>Hapus akun sekolah?</AlertDialogTitle>
             <AlertDialogDescription>
-              Akun {deleteTarget?.name} dan akses login sekolahnya akan dihapus permanen.
+              Akun {deleteTarget?.name} dan akses login sekolahnya akan dihapus
+              permanen.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeletingSchool}>Batal</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletingSchool}>
+              Batal
+            </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={isDeletingSchool}

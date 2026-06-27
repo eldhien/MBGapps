@@ -349,11 +349,21 @@ productionDistributionsRouter.post("/", async (req, res, next) => {
 
     const batch = await prisma.batchProduksi.findUnique({
       where: { id: batchId },
-      select: { id: true },
+      select: { id: true, totalPorsi: true },
     })
 
     if (!batch) {
       return res.status(404).json({ message: "Batch tidak ditemukan." })
+    }
+
+    const requestedPortions = getRequestedPortions(validSchools)
+    const allocatedPortions = await getAllocatedBatchPortions(batchId)
+    const availablePortions = Number(batch.totalPorsi ?? 0) - allocatedPortions
+
+    if (requestedPortions > availablePortions) {
+      return res.status(400).json({
+        message: `Total porsi distribusi (${requestedPortions}) melebihi sisa stok batch (${availablePortions}). Stok awal batch ${Number(batch.totalPorsi ?? 0)} porsi.`,
+      })
     }
 
     const driver = await prisma.driver.findFirst({
@@ -487,7 +497,7 @@ productionDistributionsRouter.patch("/:id", async (req, res, next) => {
     if (batchId) {
       const batch = await prisma.batchProduksi.findUnique({
         where: { id: batchId },
-        select: { id: true },
+        select: { id: true, totalPorsi: true },
       })
 
       if (!batch) {
@@ -545,6 +555,30 @@ productionDistributionsRouter.patch("/:id", async (req, res, next) => {
       if (schoolRecords.length !== uniqueSchoolIds.size) {
         return res.status(400).json({
           message: "Ada sekolah tujuan yang tidak valid untuk SPPG ini.",
+        })
+      }
+
+      const effectiveBatchId = batchId ?? existing.batchId
+      const batchForStock = await prisma.batchProduksi.findUnique({
+        where: { id: effectiveBatchId },
+        select: { id: true, totalPorsi: true },
+      })
+
+      if (!batchForStock) {
+        return res.status(404).json({ message: "Batch tidak ditemukan." })
+      }
+
+      const requestedPortions = getRequestedPortions(validSchools)
+      const allocatedPortions = await getAllocatedBatchPortions(
+        effectiveBatchId,
+        existing.id
+      )
+      const availablePortions =
+        Number(batchForStock.totalPorsi ?? 0) - allocatedPortions
+
+      if (requestedPortions > availablePortions) {
+        return res.status(400).json({
+          message: `Total porsi distribusi (${requestedPortions}) melebihi sisa stok batch (${availablePortions}). Stok awal batch ${Number(batchForStock.totalPorsi ?? 0)} porsi.`,
         })
       }
     }
@@ -717,6 +751,29 @@ function toSchoolDistributionResponse(item: any) {
       foto: item.distribution.batch.foto,
     },
   }
+}
+
+async function getAllocatedBatchPortions(batchId: string, excludeDistributionId?: string) {
+  const result = await prisma.batchDistributionSchool.aggregate({
+    where: {
+      distribution: {
+        batchId,
+        ...(excludeDistributionId ? { id: { not: excludeDistributionId } } : {}),
+      },
+    },
+    _sum: {
+      jumlahPorsi: true,
+    },
+  })
+
+  return Number(result._sum.jumlahPorsi ?? 0)
+}
+
+function getRequestedPortions(schools: { jumlahPorsi?: number }[]) {
+  return schools.reduce(
+    (total, item) => total + Number(item.jumlahPorsi ?? 0),
+    0
+  )
 }
 
 schoolDistributionsRouter.get("/", async (req, res, next) => {

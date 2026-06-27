@@ -8,7 +8,7 @@ import {
   setCachedPageData,
 } from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
-import { PlusIcon, Trash2Icon } from "lucide-react"
+import { CheckCircle2Icon, ImageIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
@@ -126,148 +126,228 @@ export function BatchCreatePage() {
         />
       )}
 
-      <section className="pb-1">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Produksi makanan
-          </p>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Upload Batch
-          </h1>
-          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Buat batch produksi baru dengan nama menu, porsi, komposisi, waktu produksi, dan foto makanan.
-          </p>
-        </div>
-      </section>
-
       <form
         onSubmit={handleSubmit}
-        className="space-y-8 rounded-xl border bg-card p-6"
+        className="w-full min-w-0 space-y-6 overflow-x-hidden"
       >
-        <section className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-sm font-medium">Nama Menu</label>
-            <Input
-              required
-              placeholder="Contoh: Nasi ayam sayur"
-              value={form.namaMenu}
-              onChange={(event) =>
-                setForm({ ...form, namaMenu: event.target.value })
-              }
-            />
+        <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+              Tambahkan Batch Baru
+            </h1>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Isi detail produksi, unggah foto makanan, lalu simpan batch.
+            </p>
           </div>
+        </div>
 
-          <div>
-            <label className="mb-1 block text-sm font-medium">
-              Jumlah Porsi
-            </label>
-            <Input
-              required
-              type="number"
-              inputMode="numeric"
-              step="1"
-              placeholder="Contoh: 500"
-              value={form.jumlahPorsi}
-              onChange={(event) =>
-                setForm({ ...form, jumlahPorsi: event.target.value })
-              }
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium">
-              Waktu Mulai Produksi
-            </label>
-            <Input
-              required
-              type="datetime-local"
-              value={form.waktuMulai}
-              onChange={(event) =>
-                setForm({ ...form, waktuMulai: event.target.value })
-              }
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium">
-              Waktu Selesai Produksi
-            </label>
-            <Input
-              required
-              type="datetime-local"
-              value={form.waktuSelesai}
-              onChange={(event) =>
-                setForm({ ...form, waktuSelesai: event.target.value })
-              }
-            />
-          </div>
-
-          <div>
-            <label className="mb-1 block text-sm font-medium">
-              Foto Makanan
-            </label>
-            <Input
-              required
-              type="file"
-              accept="image/*"
-              onChange={(event) =>
-                setFotoMakanan(event.target.files?.[0] || null)
-              }
-            />
-          </div>
-        </section>
-
-        <section className="border-t pt-6">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-lg font-medium">Komposisi Makanan</h3>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => setKomposisi([...komposisi, createEmptyKomposisi()])}
-            >
-              <PlusIcon className="mr-2 h-4 w-4" />
-              Tambah Komposisi
-            </Button>
-          </div>
-
-          <div className="space-y-3">
-            {komposisi.map((item, index) => (
-              <div key={index} className="flex gap-2">
+        <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_300px] xl:grid-cols-[minmax(0,1fr)_320px]">
+          <div className="min-w-0 space-y-6">
+            <section className="grid min-w-0 gap-4 md:grid-cols-2">
+              <label className="grid min-w-0 gap-2 text-sm font-medium">
+                Nama Menu
                 <Input
                   required
-                  placeholder="Contoh: Nasi, ayam, sayur bayam"
-                  value={item.namaBahan}
-                  onChange={(event) => {
-                    const nextKomposisi = [...komposisi]
-                    nextKomposisi[index] = { namaBahan: event.target.value }
-                    setKomposisi(nextKomposisi)
-                  }}
+                  placeholder="Contoh: Nasi ayam sayur"
+                  value={form.namaMenu}
+                  className="h-11 rounded-xl border-[#e3e7ef] bg-white"
+                  onChange={(event) =>
+                    setForm({ ...form, namaMenu: event.target.value })
+                  }
                 />
+              </label>
+
+              <label className="grid min-w-0 gap-2 text-sm font-medium">
+                Jumlah Porsi
+                <Input
+                  required
+                  type="number"
+                  inputMode="numeric"
+                  step="1"
+                  placeholder="Contoh: 500"
+                  value={form.jumlahPorsi}
+                  className="h-11 rounded-xl border-[#e3e7ef] bg-white"
+                  onChange={(event) =>
+                    setForm({ ...form, jumlahPorsi: event.target.value })
+                  }
+                />
+              </label>
+
+              <label className="grid min-w-0 gap-2 text-sm font-medium">
+                Waktu Mulai Produksi
+                <Input
+                  required
+                  type="datetime-local"
+                  value={form.waktuMulai}
+                  className="h-11 rounded-xl border-[#e3e7ef] bg-white"
+                  onChange={(event) =>
+                    setForm({ ...form, waktuMulai: event.target.value })
+                  }
+                />
+              </label>
+
+              <label className="grid min-w-0 gap-2 text-sm font-medium">
+                Waktu Selesai Produksi
+                <Input
+                  required
+                  type="datetime-local"
+                  value={form.waktuSelesai}
+                  className="h-11 rounded-xl border-[#e3e7ef] bg-white"
+                  onChange={(event) =>
+                    setForm({ ...form, waktuSelesai: event.target.value })
+                  }
+                />
+              </label>
+            </section>
+
+            <section className="min-w-0 rounded-2xl bg-[#fbfcff] p-4 ring-1 ring-[#eef1f6]">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="font-semibold">Komposisi Makanan</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Masukkan bahan utama yang dipakai pada menu.
+                  </p>
+                </div>
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="icon"
-                  disabled={komposisi.length === 1}
-                  className="text-destructive hover:bg-destructive/10"
+                  variant="outline"
+                  className="h-10 rounded-xl border-[#e3e7ef] bg-white"
                   onClick={() =>
-                    setKomposisi(
-                      komposisi.filter((_, itemIndex) => itemIndex !== index)
-                    )
+                    setKomposisi([...komposisi, createEmptyKomposisi()])
                   }
                 >
-                  <Trash2Icon className="h-4 w-4" />
+                  <PlusIcon />
+                  Tambah
                 </Button>
               </div>
-            ))}
-          </div>
-        </section>
 
-        <div className="flex justify-end gap-4 border-t pt-6">
-          <Button type="button" variant="outline" onClick={() => navigate("/batch")}>
+              <div className="grid gap-3">
+                {komposisi.map((item, index) => (
+                  <div key={index} className="flex min-w-0 gap-2">
+                    <Input
+                      required
+                      placeholder="Contoh: Nasi, ayam, sayur bayam"
+                      value={item.namaBahan}
+                      className="h-11 min-w-0 rounded-xl border-[#e3e7ef] bg-white"
+                      onChange={(event) => {
+                        const nextKomposisi = [...komposisi]
+                        nextKomposisi[index] = {
+                          namaBahan: event.target.value,
+                        }
+                        setKomposisi(nextKomposisi)
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      disabled={komposisi.length === 1}
+                      className="size-11 shrink-0 rounded-xl text-red-500 hover:bg-red-50 hover:text-red-600"
+                      onClick={() =>
+                        setKomposisi(
+                          komposisi.filter(
+                            (_, itemIndex) => itemIndex !== index
+                          )
+                        )
+                      }
+                    >
+                      <Trash2Icon className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+
+          <div className="grid min-w-0 content-start gap-4 md:grid-cols-2 lg:grid-cols-1">
+            <section className="min-w-0 rounded-2xl bg-[#fbfcff] p-4 ring-1 ring-[#eef1f6]">
+              <div className="mb-3 flex items-center gap-3">
+                <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-[#eef2ff] text-[#0528f2]">
+                  <ImageIcon className="size-5" />
+                </div>
+                <div className="min-w-0">
+                  <h2 className="font-semibold">Foto Makanan</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Upload foto makanan jadi.
+                  </p>
+                </div>
+              </div>
+
+              <label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-[#d8deea] bg-white px-4 py-5 text-center transition hover:border-[#0528f2] hover:bg-[#f7f9ff]">
+                <Input
+                  required
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={(event) =>
+                    setFotoMakanan(event.target.files?.[0] || null)
+                  }
+                />
+                {fotoMakanan ? (
+                  <>
+                    <CheckCircle2Icon className="mb-2 size-7 text-[#0528f2]" />
+                    <span className="max-w-full truncate text-sm font-semibold">
+                      {fotoMakanan.name}
+                    </span>
+                    <span className="mt-1 text-xs text-muted-foreground">
+                      Klik untuk ganti
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <ImageIcon className="mb-2 size-7 text-muted-foreground" />
+                    <span className="text-sm font-semibold">Pilih foto</span>
+                    <span className="mt-1 text-xs text-muted-foreground">
+                      JPG, PNG, atau WEBP
+                    </span>
+                  </>
+                )}
+              </label>
+            </section>
+
+            <section className="min-w-0 rounded-2xl bg-white p-4 ring-1 ring-[#eef1f6]">
+              <h2 className="font-semibold">Ringkasan</h2>
+              <dl className="mt-4 grid gap-3 text-sm">
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-muted-foreground">Menu</dt>
+                  <dd className="max-w-40 min-w-0 truncate font-semibold">
+                    {form.namaMenu || "-"}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-muted-foreground">Porsi</dt>
+                  <dd className="font-semibold">{form.jumlahPorsi || "0"}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-muted-foreground">Komposisi</dt>
+                  <dd className="font-semibold">{cleanedKomposisi.length}</dd>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <dt className="text-muted-foreground">Foto</dt>
+                  <dd className="font-semibold">
+                    {fotoMakanan ? "Siap" : "Belum"}
+                  </dd>
+                </div>
+              </dl>
+            </section>
+          </div>
+        </div>
+
+        <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            className="h-10 cursor-pointer rounded-xl border-[#e3e7ef]"
+            onClick={() => navigate("/batch")}
+          >
             Batal
           </Button>
-          <Button type="submit" pending={isLoading} disabled={isLoading}>
+          <Button
+            type="submit"
+            pending={isLoading}
+            disabled={isLoading}
+            className="h-10 cursor-pointer rounded-xl bg-[#0528f2] px-4 text-white hover:bg-[#0528f2]"
+          >
             {isLoading ? "Menyimpan..." : "Simpan Batch"}
           </Button>
         </div>

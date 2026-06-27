@@ -1,5 +1,3 @@
-"use client"
-
 import * as React from "react"
 
 import { NavMain } from "@/components/nav-main"
@@ -10,10 +8,12 @@ import {
   SidebarFooter,
   SidebarHeader,
   SidebarRail,
+  SidebarTrigger,
 } from "@/components/ui/sidebar"
 import { useAuth } from "@/features/auth/AuthProvider"
 import { formatRole } from "@/features/auth/types"
 import { getVisibleNavigation } from "@/features/navigation/navigation"
+import logoSrc from "@/assets/logo.svg"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { profile, signOut } = useAuth()
@@ -37,23 +37,30 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
   return (
     <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader className="border-b px-3 py-3 group-data-[collapsible=icon]:px-2">
-        <div className="flex h-10 items-center gap-3 rounded-md px-1">
-          <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-sidebar-primary text-xs font-semibold text-sidebar-primary-foreground">
-            MB
+      <SidebarHeader className="px-5 pt-5 group-data-[collapsible=icon]:px-2 group-data-[collapsible=icon]:py-4">
+        <div className="flex h-10 items-center gap-3">
+          <div className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[#0528f2] group-data-[collapsible=icon]:hidden">
+            <img
+              src={logoSrc}
+              alt="MBG App"
+              className="size-full w-8 object-contain p-1"
+            />
           </div>
           <div className="min-w-0 text-sm leading-tight group-data-[collapsible=icon]:hidden">
-            <p className="truncate font-semibold">MBG App</p>
-            <p className="truncate text-xs text-sidebar-foreground/60">
+            <p className="truncate text-[15px] font-semibold tracking-tight">
+              MBG App
+            </p>
+            <p className="truncate text-xs text-sidebar-foreground/45">
               {brandSubtitle}
             </p>
           </div>
+          <SidebarTrigger className="ml-auto size-7 cursor-pointer bg-white text-sidebar-foreground/55 shadow-[0_8px_18px_rgba(15,23,42,0.05)] group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:ml-0 hover:bg-white hover:text-sidebar-foreground" />
         </div>
       </SidebarHeader>
-      <SidebarContent className="px-2 py-3">
-        <NavMain items={navItems} label={null} />
+      <SidebarContent className="px-4 py-2 group-data-[collapsible=icon]:px-2">
+        <NavMain items={navItems} label="MENU" />
       </SidebarContent>
-      <SidebarFooter className="border-t p-2">
+      <SidebarFooter className="px-4 pt-3 pb-4 group-data-[collapsible=icon]:px-2">
         <NavUser
           user={{
             name: userName,

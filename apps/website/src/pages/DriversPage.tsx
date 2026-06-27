@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from "react"
-import { PencilIcon, PlusIcon, PowerIcon, Trash2Icon, TriangleAlertIcon } from "lucide-react"
+import {
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  PencilIcon,
+  PlusIcon,
+  PowerIcon,
+  Trash2Icon,
+  TriangleAlertIcon,
+} from "lucide-react"
 
 import { AlertToast } from "@/components/ui/alert-toast"
 import {
@@ -44,6 +52,8 @@ const initialForm: FormState = {
   vehicleNumber: "",
 }
 
+const DRIVERS_PER_PAGE = 10
+
 export function DriversPage() {
   const cachedDrivers = getCachedPageData<Driver[]>(pageCacheKeys.drivers)
   const [drivers, setDrivers] = useState<Driver[]>(() => cachedDrivers ?? [])
@@ -55,6 +65,7 @@ export function DriversPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isDeletingDriver, setIsDeletingDriver] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Driver | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
 
   const sortedDrivers = useMemo(
     () =>
@@ -63,6 +74,18 @@ export function DriversPage() {
         return a.name.localeCompare(b.name)
       }),
     [drivers]
+  )
+  const totalPages = Math.max(
+    1,
+    Math.ceil(sortedDrivers.length / DRIVERS_PER_PAGE)
+  )
+  const paginatedDrivers = useMemo(
+    () =>
+      sortedDrivers.slice(
+        (currentPage - 1) * DRIVERS_PER_PAGE,
+        currentPage * DRIVERS_PER_PAGE
+      ),
+    [currentPage, sortedDrivers]
   )
 
   async function loadDrivers() {
@@ -88,6 +111,10 @@ export function DriversPage() {
   useEffect(() => {
     void loadDrivers()
   }, [])
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages))
+  }, [totalPages])
 
   function openCreateDialog() {
     setForm(initialForm)
@@ -133,7 +160,10 @@ export function DriversPage() {
       } else {
         const response = await api.drivers.create(payload)
         setDrivers((current) =>
-          setCachedPageData(pageCacheKeys.drivers, [...current, response.driver])
+          setCachedPageData(pageCacheKeys.drivers, [
+            ...current,
+            response.driver,
+          ])
         )
         setSuccess("Driver berhasil ditambahkan.")
       }
@@ -141,7 +171,9 @@ export function DriversPage() {
       setIsDialogOpen(false)
       setForm(initialForm)
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Gagal menyimpan driver.")
+      setError(
+        error instanceof Error ? error.message : "Gagal menyimpan driver."
+      )
     } finally {
       setIsSubmitting(false)
     }
@@ -169,7 +201,9 @@ export function DriversPage() {
           : "Driver berhasil dinonaktifkan."
       )
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Gagal mengubah status driver.")
+      setError(
+        error instanceof Error ? error.message : "Gagal mengubah status driver."
+      )
     }
   }
 
@@ -190,7 +224,9 @@ export function DriversPage() {
       setDeleteTarget(null)
       setSuccess("Driver berhasil dihapus.")
     } catch (error) {
-      setError(error instanceof Error ? error.message : "Gagal menghapus driver.")
+      setError(
+        error instanceof Error ? error.message : "Gagal menghapus driver."
+      )
     } finally {
       setIsDeletingDriver(false)
     }
@@ -215,119 +251,139 @@ export function DriversPage() {
       ) : null}
 
       <section className="pb-1">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            Master data
-          </p>
+        <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             Master Data Driver
           </h1>
           <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
-            Kelola data driver aktif yang bisa dipilih saat membuat distribusi makanan.
+            Kelola data driver aktif yang bisa dipilih saat membuat distribusi
+            makanan.
           </p>
         </div>
       </section>
 
-      <section className="rounded-lg border bg-card text-card-foreground">
-        <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
+      <section className="overflow-hidden rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.05)]">
+        <div className="flex flex-col gap-4 border-b border-[#edf0f4] p-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-lg font-semibold">Master Data Driver</h1>
-            {isLoading ? (
-              <Skeleton className="mt-2 h-4 w-32" />
-            ) : (
-              <p className="mt-1 text-sm text-muted-foreground">
-                {sortedDrivers.length} driver terdaftar
-              </p>
-            )}
+            <div className="flex items-center gap-1">
+              <h1 className="text-lg font-semibold tracking-tight">
+                Daftar driver
+              </h1>
+              <span className="text-lg font-semibold text-muted-foreground">
+                {isLoading ? "..." : sortedDrivers.length}
+              </span>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Data driver dan kendaraan untuk distribusi makanan.
+            </p>
           </div>
-          <Button onClick={openCreateDialog}>
+          <Button
+            onClick={openCreateDialog}
+            className="h-10 rounded-lg bg-[#0528f2] px-4 text-white hover:bg-[#0422c8]"
+          >
             <PlusIcon />
             Tambah driver
           </Button>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[860px] text-sm">
             <thead>
-              <tr className="border-b text-left text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Nama</th>
-                <th className="px-4 py-3 font-medium">No HP</th>
-                <th className="px-4 py-3 font-medium">Kendaraan</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 text-right font-medium">Aksi</th>
+              <tr className="border-b border-[#edf0f4] bg-[#fcfcfd] text-left text-xs text-muted-foreground">
+                <th className="px-5 py-3 font-medium">Nama</th>
+                <th className="px-5 py-3 font-medium">No HP</th>
+                <th className="px-5 py-3 font-medium">Kendaraan</th>
+                <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 text-right font-medium">Aksi</th>
               </tr>
             </thead>
             <tbody>
               {isLoading
-                ? Array.from({ length: 3 }).map((_, index) => (
-                    <tr key={index} className="border-b last:border-0">
-                      <td className="px-4 py-3">
+                ? Array.from({ length: 6 }).map((_, index) => (
+                    <tr key={index} className="border-b border-[#edf0f4]">
+                      <td className="px-5 py-4">
                         <Skeleton className="h-4 w-36" />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4">
                         <Skeleton className="h-4 w-28" />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4">
                         <Skeleton className="h-4 w-24" />
                       </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-20" />
+                      <td className="px-5 py-4">
+                        <Skeleton className="h-6 w-20 rounded-full" />
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-5 py-4">
                         <Skeleton className="ml-auto h-8 w-28" />
                       </td>
                     </tr>
                   ))
                 : null}
-              {sortedDrivers.map((driver) => (
-                <tr key={driver.id} className="border-b last:border-0">
-                  <td className="px-4 py-3 font-medium">{driver.name}</td>
-                  <td className="px-4 py-3">{driver.phone || "-"}</td>
-                  <td className="px-4 py-3">{driver.vehicleNumber || "-"}</td>
-                  <td className="px-4 py-3">
-                    <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium">
-                      {driver.isActive ? "Aktif" : "Nonaktif"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openEditDialog(driver)}
+              {!isLoading &&
+                paginatedDrivers.map((driver) => (
+                  <tr
+                    key={driver.id}
+                    className="border-b border-[#edf0f4] last:border-0 hover:bg-[#fcfcfd]"
+                  >
+                    <td className="px-5 py-4 font-semibold">{driver.name}</td>
+                    <td className="px-5 py-4 text-muted-foreground">
+                      {driver.phone || "-"}
+                    </td>
+                    <td className="px-5 py-4 text-muted-foreground">
+                      {driver.vehicleNumber || "-"}
+                    </td>
+                    <td className="px-5 py-4">
+                      <span
+                        className={
+                          driver.isActive
+                            ? "rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600 ring-1 ring-emerald-100"
+                            : "rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200"
+                        }
                       >
-                        <PencilIcon />
-                        Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => toggleDriver(driver)}
-                      >
-                        <PowerIcon />
-                        {driver.isActive ? "Nonaktifkan" : "Aktifkan"}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => setDeleteTarget(driver)}
-                      >
-                        <Trash2Icon />
-                        Delete
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {driver.isActive ? "Aktif" : "Nonaktif"}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-lg border-[#e3e7ef]"
+                          onClick={() => openEditDialog(driver)}
+                        >
+                          <PencilIcon />
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="rounded-lg"
+                          onClick={() => toggleDriver(driver)}
+                        >
+                          <PowerIcon />
+                          {driver.isActive ? "Nonaktifkan" : "Aktifkan"}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="rounded-lg border-red-100 text-red-600 hover:bg-red-50 hover:text-red-700"
+                          onClick={() => setDeleteTarget(driver)}
+                        >
+                          <Trash2Icon />
+                          Hapus
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
               {!isLoading && sortedDrivers.length === 0 ? (
                 <tr>
                   <td
                     colSpan={5}
-                    className="px-4 py-8 text-center text-muted-foreground"
+                    className="px-5 py-10 text-center text-muted-foreground"
                   >
                     Belum ada driver.
                   </td>
@@ -336,6 +392,51 @@ export function DriversPage() {
             </tbody>
           </table>
         </div>
+
+        {!isLoading && sortedDrivers.length > DRIVERS_PER_PAGE ? (
+          <div className="flex items-center justify-center gap-2 border-t border-[#edf0f4] p-4">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={currentPage <= 1}
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+            >
+              <ChevronLeftIcon />
+            </Button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: totalPages }).map((_, index) => {
+                const page = index + 1
+
+                return (
+                  <button
+                    key={page}
+                    type="button"
+                    className={
+                      currentPage === page
+                        ? "flex size-8 items-center justify-center rounded-lg bg-[#f3f4f6] text-sm font-semibold"
+                        : "flex size-8 items-center justify-center rounded-lg text-sm text-muted-foreground hover:bg-[#f7f8fb]"
+                    }
+                    onClick={() => setCurrentPage(page)}
+                  >
+                    {page}
+                  </button>
+                )
+              })}
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={currentPage >= totalPages}
+              onClick={() =>
+                setCurrentPage((page) => Math.min(totalPages, page + 1))
+              }
+            >
+              <ChevronRightIcon />
+            </Button>
+          </div>
+        ) : null}
       </section>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -352,7 +453,10 @@ export function DriversPage() {
               <Input
                 value={form.name}
                 onChange={(event) =>
-                  setForm((current) => ({ ...current, name: event.target.value }))
+                  setForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                  }))
                 }
                 required
               />
@@ -391,21 +495,30 @@ export function DriversPage() {
               >
                 Batal
               </Button>
-              <Button type="submit" pending={isSubmitting} disabled={isSubmitting}>
+              <Button
+                type="submit"
+                pending={isSubmitting}
+                disabled={isSubmitting}
+              >
                 {isSubmitting
                   ? form.id
                     ? "Menyimpan..."
                     : "Menambah..."
                   : form.id
-                  ? "Simpan"
-                  : "Tambah"}
+                    ? "Simpan"
+                    : "Tambah"}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={(open) => !open && !isDeletingDriver && setDeleteTarget(null)}>
+      <AlertDialog
+        open={Boolean(deleteTarget)}
+        onOpenChange={(open) =>
+          !open && !isDeletingDriver && setDeleteTarget(null)
+        }
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia>
@@ -417,7 +530,9 @@ export function DriversPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeletingDriver}>Batal</AlertDialogCancel>
+            <AlertDialogCancel disabled={isDeletingDriver}>
+              Batal
+            </AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={isDeletingDriver}

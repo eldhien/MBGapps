@@ -37,6 +37,7 @@ export type DashboardAnalytics = {
   deliveredDistributions: number
   totalFoodReports: number
   totalStudentComplaints: number
+  dailyActivity?: { label: string; value: number }[]
 }
 
 export type FoodReportCategory =
@@ -528,8 +529,9 @@ export const api = {
     },
   },
   dashboard: {
-    analytics() {
-      return request<{ data: DashboardAnalytics }>("/dashboard/analytics")
+    analytics(month?: string) {
+      const query = month ? `?month=${encodeURIComponent(month)}` : ""
+      return request<{ data: DashboardAnalytics }>(`/dashboard/analytics${query}`)
     },
   },
   foodReports: {

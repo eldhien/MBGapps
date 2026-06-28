@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useAuth } from "@/features/auth/AuthProvider"
 import { api, type DashboardAnalytics } from "@/lib/api"
 import {
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
-  subscribePageCache,
 } from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 import {
@@ -70,33 +70,54 @@ function getEmptyWeeklyActivity() {
 }
 
 export function DashboardPage() {
+  const { profile } = useAuth()
+  const dashboardCacheKey = profile
+    ? `${pageCacheKeys.dashboardAnalytics}:${profile.role}:${profile.id}`
+    : `${pageCacheKeys.dashboardAnalytics}:guest`
   const cachedAnalytics = getCachedPageData<DashboardAnalytics>(
-    pageCacheKeys.dashboardAnalytics
+    dashboardCacheKey
   )
-  const [analytics, setAnalytics] = useState<DashboardAnalytics | null>(
-    cachedAnalytics ?? null
-  )
-  const [loading, setLoading] = useState(!cachedAnalytics)
+  const [analyticsState, setAnalyticsState] = useState<{
+    data: DashboardAnalytics | null
+    key: string
+  }>(() => ({
+    data: cachedAnalytics ?? null,
+    key: dashboardCacheKey,
+  }))
+  const [loadingState, setLoadingState] = useState<{
+    key: string
+    value: boolean
+  }>(() => ({
+    key: dashboardCacheKey,
+    value: !cachedAnalytics,
+  }))
   const [error, setError] = useState<string | null>(null)
   const periodLabel = getLastSevenDaysLabel()
+  const analytics =
+    analyticsState.key === dashboardCacheKey
+      ? analyticsState.data
+      : cachedAnalytics ?? null
+  const loading =
+    loadingState.key === dashboardCacheKey
+      ? loadingState.value
+      : !cachedAnalytics
 
   useEffect(() => {
     let isMounted = true
-    const hasCachedAnalytics = Boolean(
-      getCachedPageData<DashboardAnalytics>(pageCacheKeys.dashboardAnalytics)
-    )
+    const cached = getCachedPageData<DashboardAnalytics>(dashboardCacheKey)
 
     const load = async (showLoading = false) => {
       if (showLoading) {
-        setLoading(true)
+        setLoadingState({ key: dashboardCacheKey, value: true })
       }
 
       try {
         const response = await api.dashboard.analytics()
         if (!isMounted) return
-        setAnalytics(
-          setCachedPageData(pageCacheKeys.dashboardAnalytics, response.data)
-        )
+        setAnalyticsState({
+          data: setCachedPageData(dashboardCacheKey, response.data),
+          key: dashboardCacheKey,
+        })
         setError(null)
       } catch (err) {
         if (isMounted) {
@@ -104,12 +125,12 @@ export function DashboardPage() {
         }
       } finally {
         if (isMounted) {
-          setLoading(false)
+          setLoadingState({ key: dashboardCacheKey, value: false })
         }
       }
     }
 
-    void load(!hasCachedAnalytics)
+    void load(!cached)
     const realtimeIntervalId = window.setInterval(() => {
       void load(false)
     }, 15_000)
@@ -118,20 +139,7 @@ export function DashboardPage() {
       isMounted = false
       window.clearInterval(realtimeIntervalId)
     }
-  }, [])
-
-  useEffect(() => {
-    return subscribePageCache<DashboardAnalytics>(
-      pageCacheKeys.dashboardAnalytics,
-      () => {
-        void api.dashboard.analytics().then((response) => {
-          setAnalytics(
-            setCachedPageData(pageCacheKeys.dashboardAnalytics, response.data)
-          )
-        })
-      }
-    )
-  }, [])
+  }, [dashboardCacheKey])
 
   const data = analytics ?? emptyAnalytics
 

@@ -110,6 +110,38 @@ async function resolveFoodReportSchools<
   }))
 }
 
+async function getVisibleSchoolReportIds(user: {
+  id: string
+  role: string
+  schoolId?: string | null
+  username: string
+}) {
+  const reporterSchoolId = await getReporterSchoolId(user)
+  const sppgOwnerId = await getSppgOwnerId(user)
+
+  if (user.role === "SEKOLAH") {
+    return [user.id, reporterSchoolId].filter(Boolean) as string[]
+  }
+
+  if (user.role === "SPPG") {
+    return getManagedSchoolReportIds(sppgOwnerId)
+  }
+
+  return null
+}
+
+function getSchoolReportWhere(schoolReporterIds: string[] | null) {
+  if (schoolReporterIds === null) {
+    return {}
+  }
+
+  if (schoolReporterIds.length === 0) {
+    return { id: "__no_report__" }
+  }
+
+  return { sekolahId: { in: schoolReporterIds } }
+}
+
 function toBatchSummary(batch: {
   createdAt: Date
   id: string
@@ -138,18 +170,8 @@ dashboardRouter.get("/topbar", async (req, res) => {
 
     const reporterSchoolId = await getReporterSchoolId(currentUser)
     const sppgOwnerId = await getSppgOwnerId(currentUser)
-    const schoolReporterIds =
-      currentUser.role === "SEKOLAH"
-        ? ([currentUser.id, reporterSchoolId].filter(Boolean) as string[])
-        : currentUser.role === "SPPG"
-          ? await getManagedSchoolReportIds(sppgOwnerId)
-          : null
-    const reportWhere =
-      schoolReporterIds === null
-        ? {}
-        : schoolReporterIds.length
-          ? { sekolahId: { in: schoolReporterIds } }
-          : { id: "__no_report__" }
+    const schoolReporterIds = await getVisibleSchoolReportIds(currentUser)
+    const reportWhere = getSchoolReportWhere(schoolReporterIds)
     const batchWhere =
       currentUser.role === "SEKOLAH"
         ? reporterSchoolId
@@ -236,10 +258,7 @@ dashboardRouter.get("/analytics", async (req, res, next) => {
     const reporterSchoolId = await getReporterSchoolId(currentUser)
     const sppgOwnerId = await getSppgOwnerId(currentUser)
     const { start, end } = getLastSevenDaysRange()
-    const schoolReporterIds =
-      currentUser.role === "SEKOLAH"
-        ? ([currentUser.id, reporterSchoolId].filter(Boolean) as string[])
-        : []
+    const schoolReporterIds = await getVisibleSchoolReportIds(currentUser)
 
     const distributionSchoolWhere =
       currentUser.role === "SEKOLAH"
@@ -290,10 +309,7 @@ dashboardRouter.get("/analytics", async (req, res, next) => {
             : { id: "__no_sppg__" }
           : {}
 
-    const reportWhere =
-      currentUser.role === "SEKOLAH"
-        ? { sekolahId: { in: schoolReporterIds } }
-        : {}
+    const reportWhere = getSchoolReportWhere(schoolReporterIds)
 
     const batchDateWhere = withCreatedAtRange(batchWhere, start, end)
     const distributionDateWhere = withCreatedAtRange(

@@ -216,13 +216,101 @@ export type Driver = {
   updatedAt: string
 }
 
+export type MenuMaster = {
+  id: string
+  name: string
+  category: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export type BatchIngredient = {
+  id?: string
+  namaBahan: string
+  jumlah?: number | null
+  satuan?: string | null
+  harga?: number | null
+  kategori?: string | null
+}
+
+export type BatchVariant = {
+  id?: string
+  namaVarian: string
+  jumlahPorsi: number
+  energi?: number | null
+  protein?: number | null
+  lemak?: number | null
+  karbohidrat?: number | null
+  serat?: number | null
+  bahan?: BatchIngredient[]
+}
+
+export type BatchPhoto = {
+  id: string
+  batchId?: string
+  jenis?: "PROSES_MASAK" | "MAKANAN_JADI" | string | null
+  url: string
+  createdAt?: string
+  updatedAt?: string
+  publicId?: string
+}
+
+export type ProductionBatch = {
+  id: string
+  menuId?: string
+  menu?: MenuMaster | null
+  totalPorsi: number
+  jumlahPorsi?: number
+  status: string
+  createdAt?: string
+  updatedAt?: string
+  waktuMulai?: string | null
+  waktuSelesai?: string | null
+  waktuProduksi?: string | null
+  driverId?: string | null
+  petugas?: { id: string; role?: UserRole; username: string } | null
+  driver?: Driver | null
+  foto?: BatchPhoto[]
+  varian?: BatchVariant[]
+  catatanKualitas?: string | null
+  noKendaraan?: string | null
+  ruteDistribusi?: string | null
+  jamKeberangkatan?: string | null
+}
+
+export type CreateProductionBatchPayload = {
+  namaMenu: string
+  totalPorsi: number
+  waktuMulai?: string
+  waktuSelesai?: string
+  varian?: {
+    bahan?: {
+      harga?: number | null
+      jumlah?: number | null
+      kategori?: string | null
+      namaBahan: string
+      satuan?: string
+    }[]
+    jumlahPorsi?: number
+    namaVarian?: string
+  }[]
+}
+
+export type DapurCapacity = {
+  id?: string
+  date: string
+  capacity: number
+  createdAt?: string
+  updatedAt?: string
+}
+
 export type ProductionDistribution = {
   id: string
   batchId: string
   waktuKirim: string | null
   status: string
   createdAt: string
-  batch: any
+  batch: ProductionBatch | null
   schools: {
     id: string
     jumlahPorsi: number
@@ -251,14 +339,7 @@ export type SchoolDistribution = {
     status: string
     fotoDikemasUrl: string | null
   }
-  batch: {
-    id: string
-    status: string
-    createdAt: string
-    menu?: { name: string } | null
-    driver?: { name: string; vehicleNumber?: string | null } | null
-    foto?: { id: string; jenis: string; url: string }[]
-  }
+  batch: ProductionBatch
 }
 
 async function request<T>(path: string, options: RequestInit = {}) {
@@ -430,13 +511,13 @@ export const api = {
   },
   productionBatches: {
     list() {
-      return request<any[]>("/production-batches")
+      return request<ProductionBatch[]>("/production-batches")
     },
     get(id: string) {
-      return request<any>(`/production-batches/${encodeURIComponent(id)}`)
+      return request<ProductionBatch>(`/production-batches/${encodeURIComponent(id)}`)
     },
-    create(payload: any) {
-      return request<any>("/production-batches", {
+    create(payload: CreateProductionBatchPayload) {
+      return request<ProductionBatch>("/production-batches", {
         method: "POST",
         body: JSON.stringify(payload),
       })
@@ -444,23 +525,23 @@ export const api = {
     update(id: string, payload: {
       namaMenu?: string
       totalPorsi?: number
-      varian?: any[]
+      varian?: CreateProductionBatchPayload["varian"]
       waktuMulai?: string
       waktuSelesai?: string
     }) {
-      return request<any>(`/production-batches/${encodeURIComponent(id)}`, {
+      return request<ProductionBatch>(`/production-batches/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(payload),
       })
     },
     updateStatus(id: string, payload: { status: string; catatanKualitas?: string }) {
-      return request<any>(`/production-batches/${encodeURIComponent(id)}/status`, {
+      return request<ProductionBatch>(`/production-batches/${encodeURIComponent(id)}/status`, {
         method: "PATCH",
         body: JSON.stringify(payload),
       })
     },
     updateDelivery(id: string, payload: { driverId?: string; noKendaraan?: string; jamKeberangkatan?: string }) {
-      return request<any>(`/production-batches/${encodeURIComponent(id)}/delivery`, {
+      return request<ProductionBatch>(`/production-batches/${encodeURIComponent(id)}/delivery`, {
         method: "PATCH",
         body: JSON.stringify(payload),
       })
@@ -490,15 +571,15 @@ export const api = {
         console.error("Upload failed with status:", response.status, errorText)
         throw new Error(`Gagal mengunggah foto: ${errorText}`)
       }
-      return response.json()
+      return response.json() as Promise<BatchPhoto>
     }
   },
   menus: {
     list() {
-      return request<any[]>("/menus")
+      return request<MenuMaster[]>("/menus")
     },
     create(payload: { name: string; category: string }) {
-      return request<any>("/menus", {
+      return request<MenuMaster>("/menus", {
         method: "POST",
         body: JSON.stringify(payload),
       })
@@ -507,10 +588,10 @@ export const api = {
   settings: {
     getDapurCapacity(date?: string) {
       const query = date ? `?date=${date}` : ""
-      return request<any>(`/settings/dapur${query}`)
+      return request<DapurCapacity>(`/settings/dapur${query}`)
     },
     setDapurCapacity(payload: { date: string; capacity: number }) {
-      return request<any>("/settings/dapur", {
+      return request<DapurCapacity>("/settings/dapur", {
         method: "POST",
         body: JSON.stringify(payload),
       })

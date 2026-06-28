@@ -1,121 +1,61 @@
-import {
-  BatchDistributionSchoolStatus,
-  BatchDistributionStatus,
-  UserRole,
-} from "@prisma/client"
-import bcrypt from "bcryptjs"
+import { BatchDistributionStatus, UserRole, type Prisma } from "@prisma/client"
 import { Router } from "express"
 
-import { getCurrentUser } from "../auth/session.js"
 import { prisma } from "../lib/prisma.js"
-import multer from "multer"
-import { fileBufferToDataUrl, uploadImageToCloudinary } from "../lib/cloudinary.js"
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 8 * 1024 * 1024,
-  },
-})
+import { getSppgOwnerId, requireRoles } from "../lib/user-scope.js"
 
 export const productionDistributionsRouter = Router()
 
-type SppgDistributionCheck =
-  | {
-      currentUser: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>
+type DistributionWithRelations = Prisma.BatchDistributionGetPayload<{
+  include: {
+    batch: {
+      include: {
+        driver: true
+        menu: true
+      }
     }
-  | {
-      message: string
-      status: number
+    schools: {
+      include: {
+        school: {
+          select: {
+            address: true
+            id: true
+            name: true
+            npsn: true
+          }
+        }
+      }
     }
-
-function isUuid(value?: string | null) {
-  return Boolean(
-    value?.match(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-    )
-  )
-}
-
-let batchStatusEnumReady: Promise<void> | null = null
-
-async function ensureBatchStatusFinalValues() {
-  if (!batchStatusEnumReady) {
-    batchStatusEnumReady = (async () => {
-      await prisma.$executeRawUnsafe(
-        `ALTER TYPE "public"."BatchStatus" ADD VALUE IF NOT EXISTS 'DITERIMA'`
-      )
-      await prisma.$executeRawUnsafe(
-        `ALTER TYPE "public"."BatchStatus" ADD VALUE IF NOT EXISTS 'DITOLAK'`
-      )
-      await prisma.$executeRawUnsafe(
-        `ALTER TYPE "public"."BatchDistributionStatus" ADD VALUE IF NOT EXISTS 'DITOLAK'`
-      )
-    })().catch((error) => {
-      batchStatusEnumReady = null
-      throw error
-    })
   }
+}>
 
-  return batchStatusEnumReady
-}
-
-async function resolveSppgOwnerId(user: {
+type DistributionResponse = {
+  batch: {
+    driver: DistributionWithRelations["batch"]["driver"]
+    id: string
+    menu: DistributionWithRelations["batch"]["menu"]
+    status: string
+    totalPorsi: number
+  } | null
+  batchId: string
+  createdAt: string
   id: string
-  role: UserRole | string
-  username: string
-}) {
-  if (user.role !== UserRole.SPPG) {
-    return null
-  }
-
-  if (isUuid(user.id)) {
-    return user.id
-  }
-
-  const existingUser = await prisma.user.findUnique({
-    where: { username: user.username },
-    select: { id: true, role: true },
-  })
-
-  if (existingUser?.role === UserRole.SPPG) {
-    return existingUser.id
-  }
-
-  const passwordHash = await bcrypt.hash(`${user.username}-demo`, 12)
-  const createdUser = await prisma.user.create({
-    data: {
-      passwordHash,
-      role: UserRole.SPPG,
-      username: user.username,
-    },
-    select: { id: true },
-  })
-
-  return createdUser.id
+  schools: {
+    id: string
+    jumlahPorsi: number
+    receivedAt: string | null
+    rejectedReason: string | null
+    school: DistributionWithRelations["schools"][number]["school"]
+    status: string
+  }[]
+  status: string
+  waktuKirim: string | null
 }
 
-async function requireSppgOrSuperAdmin(
-  req: Parameters<typeof getCurrentUser>[0]
-): Promise<SppgDistributionCheck> {
-  const currentUser = await getCurrentUser(req)
-
-  if (!currentUser) {
-    return { status: 401, message: "Token tidak ditemukan atau tidak valid." }
-  }
-
-  if (currentUser.role !== "SUPER_ADMIN" && currentUser.role !== "SPPG") {
-    return {
-      status: 403,
-      message: "Hanya SPPG atau Super Admin yang dapat mengelola distribusi.",
-    }
-  }
-
-  return { currentUser }
-}
-
-function toDistributionResponse(distribution: any) {
-  const schools = distribution.schools.map((item: any) => ({
+function toDistributionResponse(
+  distribution: DistributionWithRelations
+): DistributionResponse {
+  const schools = distribution.schools.map((item) => ({
     id: item.id,
     jumlahPorsi: item.jumlahPorsi,
     status: item.status,
@@ -123,7 +63,7 @@ function toDistributionResponse(distribution: any) {
     rejectedReason: item.rejectedReason,
     school: item.school,
   }))
-  const normalizedStatus = schools.some((item: any) => item.status === "DITOLAK")
+  const normalizedStatus = schools.some((item) => item.status === "DITOLAK")
     ? "DITOLAK"
     : distribution.status
 
@@ -173,7 +113,27 @@ type RawProductionDistribution = {
 }
 
 function toRawDistributionResponses(rows: RawProductionDistribution[]) {
-  const map = new Map<string, any>()
+  const map = new Map<
+    string,
+    Omit<DistributionResponse, "batch"> & {
+      batch: {
+        driver: {
+          id: string
+          name: string | null
+          phone: string | null
+          vehicleNumber: string | null
+        } | null
+        id: string
+        menu: {
+          category: string | null
+          id: string
+          name: string | null
+        } | null
+        status: string | null
+        totalPorsi: number | null
+      }
+    }
+  >()
 
   for (const row of rows) {
     if (!map.has(row.id)) {
@@ -207,11 +167,12 @@ function toRawDistributionResponses(rows: RawProductionDistribution[]) {
       })
     }
 
-    if (row.school_item_id) {
-      map.get(row.id).schools.push({
+    const distribution = map.get(row.id)
+    if (row.school_item_id && distribution) {
+      distribution.schools.push({
         id: row.school_item_id,
         jumlahPorsi: row.jumlah_porsi ?? 0,
-        status: row.school_item_status,
+        status: row.school_item_status ?? "MENUNGGU",
         receivedAt: row.received_at?.toISOString() ?? null,
         rejectedReason: row.rejected_reason,
         school: {
@@ -226,10 +187,36 @@ function toRawDistributionResponses(rows: RawProductionDistribution[]) {
 
   return [...map.values()].map((distribution) => ({
     ...distribution,
-    status: distribution.schools.some((item: any) => item.status === "DITOLAK")
+    status: distribution.schools.some((item) => item.status === "DITOLAK")
       ? "DITOLAK"
       : distribution.status,
   }))
+}
+
+async function getAllocatedBatchPortions(
+  batchId: string,
+  excludeDistributionId?: string
+) {
+  const result = await prisma.batchDistributionSchool.aggregate({
+    where: {
+      distribution: {
+        batchId,
+        ...(excludeDistributionId ? { id: { not: excludeDistributionId } } : {}),
+      },
+    },
+    _sum: {
+      jumlahPorsi: true,
+    },
+  })
+
+  return Number(result._sum.jumlahPorsi ?? 0)
+}
+
+function getRequestedPortions(schools: { jumlahPorsi?: number }[]) {
+  return schools.reduce(
+    (total, item) => total + Number(item.jumlahPorsi ?? 0),
+    0
+  )
 }
 
 async function findProductionDistributionsForUser(user: {
@@ -238,7 +225,9 @@ async function findProductionDistributionsForUser(user: {
   username: string
 }) {
   const sppgFilter =
-    user.role === UserRole.SPPG ? await resolveSppgOwnerId(user) : null
+    user.role === UserRole.SPPG
+      ? await getSppgOwnerId(user, { createIfMissing: true })
+      : null
 
   return prisma.$queryRaw<RawProductionDistribution[]>`
     SELECT
@@ -283,13 +272,16 @@ async function findProductionDistributionsForUser(user: {
 
 productionDistributionsRouter.get("/", async (req, res, next) => {
   try {
-    const auth = await requireSppgOrSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN", "SPPG"],
+      "Hanya SPPG atau Super Admin yang dapat mengelola distribusi."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
     }
 
-    await ensureBatchStatusFinalValues()
     await prisma.$executeRawUnsafe(`
       UPDATE "public"."batch_distributions" d
       SET status = 'DITOLAK'::"public"."BatchDistributionStatus"
@@ -309,10 +301,13 @@ productionDistributionsRouter.get("/", async (req, res, next) => {
     next(error)
   }
 })
-
 productionDistributionsRouter.post("/", async (req, res, next) => {
   try {
-    const auth = await requireSppgOrSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN", "SPPG"],
+      "Hanya SPPG atau Super Admin yang dapat mengelola distribusi."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
@@ -380,7 +375,7 @@ productionDistributionsRouter.post("/", async (req, res, next) => {
 
     const ownerSppgId =
       auth.currentUser.role === UserRole.SPPG
-        ? await resolveSppgOwnerId(auth.currentUser)
+        ? await getSppgOwnerId(auth.currentUser, { createIfMissing: true })
         : null
 
     if (auth.currentUser.role === UserRole.SPPG && !ownerSppgId) {
@@ -462,10 +457,13 @@ productionDistributionsRouter.post("/", async (req, res, next) => {
     next(error)
   }
 })
-
 productionDistributionsRouter.patch("/:id", async (req, res, next) => {
   try {
-    const auth = await requireSppgOrSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN", "SPPG"],
+      "Hanya SPPG atau Super Admin yang dapat mengelola distribusi."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
@@ -533,7 +531,7 @@ productionDistributionsRouter.patch("/:id", async (req, res, next) => {
     if (validSchools?.length) {
       const ownerSppgId =
         auth.currentUser.role === UserRole.SPPG
-          ? await resolveSppgOwnerId(auth.currentUser)
+          ? await getSppgOwnerId(auth.currentUser, { createIfMissing: true })
           : null
 
       if (auth.currentUser.role === UserRole.SPPG && !ownerSppgId) {
@@ -667,7 +665,11 @@ productionDistributionsRouter.patch("/:id", async (req, res, next) => {
 
 productionDistributionsRouter.delete("/:id", async (req, res, next) => {
   try {
-    const auth = await requireSppgOrSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN", "SPPG"],
+      "Hanya SPPG atau Super Admin yang dapat mengelola distribusi."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
@@ -698,340 +700,6 @@ productionDistributionsRouter.delete("/:id", async (req, res, next) => {
     }
 
     return res.status(204).send()
-  } catch (error) {
-    next(error)
-  }
-})
-
-export const schoolDistributionsRouter = Router()
-
-async function getCurrentSchoolId(user: {
-  id: string
-  role: UserRole | string
-  username: string
-}) {
-  if (isUuid(user.id)) {
-    const currentUser = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: { schoolId: true },
-    })
-
-    return currentUser?.schoolId ?? null
-  }
-
-  const existingUser = await prisma.user.findUnique({
-    where: { username: user.username },
-    select: { schoolId: true },
-  })
-
-  return existingUser?.schoolId ?? null
-}
-
-function toSchoolDistributionResponse(item: any) {
-  return {
-    id: item.id,
-    jumlahPorsi: item.jumlahPorsi,
-    status: item.status,
-    receivedAt: item.receivedAt?.toISOString() ?? null,
-    rejectedReason: item.rejectedReason,
-    buktiTerimaFotoUrl: item.buktiTerimaFotoUrl ?? null,
-    distribution: {
-      id: item.distribution.id,
-      waktuKirim: item.distribution.waktuKirim?.toISOString() ?? null,
-      status: item.distribution.status,
-      fotoDikemasUrl: item.distribution.fotoDikemasUrl ?? null,
-    },
-    batch: {
-      id: item.distribution.batch.id,
-      totalPorsi: item.distribution.batch.totalPorsi,
-      status: item.distribution.batch.status,
-      createdAt: item.distribution.batch.createdAt?.toISOString() ?? null,
-      menu: item.distribution.batch.menu,
-      driver: item.distribution.batch.driver,
-      foto: item.distribution.batch.foto,
-    },
-  }
-}
-
-async function getAllocatedBatchPortions(batchId: string, excludeDistributionId?: string) {
-  const result = await prisma.batchDistributionSchool.aggregate({
-    where: {
-      distribution: {
-        batchId,
-        ...(excludeDistributionId ? { id: { not: excludeDistributionId } } : {}),
-      },
-    },
-    _sum: {
-      jumlahPorsi: true,
-    },
-  })
-
-  return Number(result._sum.jumlahPorsi ?? 0)
-}
-
-function getRequestedPortions(schools: { jumlahPorsi?: number }[]) {
-  return schools.reduce(
-    (total, item) => total + Number(item.jumlahPorsi ?? 0),
-    0
-  )
-}
-
-schoolDistributionsRouter.get("/", async (req, res, next) => {
-  try {
-    const currentUser = await getCurrentUser(req)
-
-    if (!currentUser) {
-      return res.status(401).json({ message: "Token tidak ditemukan atau tidak valid." })
-    }
-
-    const schoolId = await getCurrentSchoolId(currentUser)
-
-    if (currentUser.role !== "SEKOLAH" || !schoolId) {
-      return res.status(403).json({
-        message: "Hanya akun sekolah yang dapat melihat distribusi sekolah.",
-      })
-    }
-
-    await ensureBatchStatusFinalValues()
-
-    // Get the SPPG that manages this school
-    const schoolRecord = await prisma.school.findUnique({
-      where: { id: schoolId },
-      select: { sppgId: true },
-    })
-
-    // 1. Fetch existing BatchDistributionSchool records (batches already in distribution)
-    const distributions = await prisma.batchDistributionSchool.findMany({
-      where: { schoolId },
-      include: {
-        distribution: {
-          include: {
-            batch: {
-              include: {
-                driver: true,
-                foto: true,
-                menu: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    })
-
-    // Collect batchIds that already have a distribution school record (avoid duplicates)
-    const distributedBatchIds = new Set(
-      distributions.map((d) => d.distribution.batchId)
-    )
-
-    // 2. Fetch ALL batches created today by the SPPG managing this school
-    //    that DON'T yet have a distribution record for this school
-    //    Filter: petugasId = sppgId (SPPG created it directly) OR petugasId IS NULL (system batch)
-    const undistributedBatches = schoolRecord?.sppgId
-      ? await prisma.batchProduksi.findMany({
-          where: {
-            id: { notIn: [...distributedBatchIds] },
-            OR: [
-              { petugasId: schoolRecord.sppgId }, // SPPG created directly
-              { petugasId: null },                 // No assigned petugas (SPPG system)
-            ],
-            createdAt: {
-              gte: (() => {
-                const d = new Date()
-                d.setHours(0, 0, 0, 0)
-                return d
-              })(),
-              lte: (() => {
-                const d = new Date()
-                d.setHours(23, 59, 59, 999)
-                return d
-              })(),
-            },
-          },
-          include: {
-            driver: true,
-            foto: true,
-            menu: true,
-          },
-          orderBy: { createdAt: "desc" },
-        })
-      : []
-
-
-    // Convert undistributed batch entries to the same response shape
-    const virtualDistributions = undistributedBatches.map((batch) => ({
-      id: `virtual-${batch.id}`,
-      jumlahPorsi: batch.totalPorsi,
-      status: "MENUNGGU",
-      receivedAt: null,
-      rejectedReason: null,
-      buktiTerimaFotoUrl: null,
-      distribution: {
-        id: `virtual-dist-${batch.id}`,
-        waktuKirim: null,
-        status: "DRAFT",
-        fotoDikemasUrl: null,
-      },
-      batch: {
-        id: batch.id,
-        totalPorsi: batch.totalPorsi,
-        status: batch.status,
-        createdAt: batch.createdAt?.toISOString() ?? null,
-        menu: batch.menu,
-        driver: batch.driver,
-        foto: batch.foto,
-      },
-    }))
-
-    return res.json({
-      distributions: [
-        ...distributions.map(toSchoolDistributionResponse),
-        ...virtualDistributions,
-      ],
-    })
-  } catch (error) {
-    next(error)
-  }
-})
-
-
-
-schoolDistributionsRouter.patch("/:id/status", upload.single("file"), async (req, res, next) => {
-  try {
-    const distributionSchoolId = String(req.params.id)
-    const currentUser = await getCurrentUser(req)
-
-    if (!currentUser) {
-      return res.status(401).json({ message: "Token tidak ditemukan atau tidak valid." })
-    }
-
-    const schoolId = await getCurrentSchoolId(currentUser)
-
-    if (currentUser.role !== "SEKOLAH" || !schoolId) {
-      return res.status(403).json({
-        message: "Hanya akun sekolah yang dapat memvalidasi distribusi.",
-      })
-    }
-
-    const { rejectedReason, status } = req.body as {
-      rejectedReason?: string
-      status?: string
-    }
-
-    if (
-      status !== BatchDistributionSchoolStatus.DITERIMA &&
-      status !== BatchDistributionSchoolStatus.DITOLAK
-    ) {
-      return res.status(400).json({ message: "Status validasi tidak valid." })
-    }
-
-    const normalizedReason = rejectedReason?.trim()
-
-    if (status === "DITOLAK" && !normalizedReason) {
-      return res.status(400).json({ message: "Alasan penolakan wajib diisi." })
-    }
-
-    await ensureBatchStatusFinalValues()
-
-    let buktiTerimaFotoUrl: string | null = null
-    const file = req.file
-
-    if (!file) {
-      return res.status(400).json({ message: "Foto validasi wajib diunggah." })
-    }
-    if (!file.mimetype.startsWith("image/")) {
-      return res.status(400).json({ message: "File harus berupa gambar." })
-    }
-
-    const uploadResult = await uploadImageToCloudinary({
-      file: fileBufferToDataUrl(file),
-      folder: `mbg/distributions/${distributionSchoolId}/school/${schoolId}`,
-    })
-    buktiTerimaFotoUrl = uploadResult.url
-
-    const updated = await prisma.$transaction(async (tx) => {
-      const txAny = tx as any
-
-      await txAny.batchDistributionSchool.updateMany({
-        where: {
-          id: distributionSchoolId,
-          schoolId,
-        },
-        data: {
-          status,
-          receivedAt: new Date(),
-          rejectedReason: status === "DITOLAK" ? normalizedReason : null,
-          buktiTerimaFotoUrl,
-        },
-      })
-
-      const item = await txAny.batchDistributionSchool.findFirstOrThrow({
-        where: {
-          id: distributionSchoolId,
-          schoolId,
-        },
-        include: {
-          distribution: {
-            include: {
-              schools: true,
-              batch: {
-                include: {
-                  driver: true,
-                  foto: true,
-                  menu: true,
-                },
-              },
-            },
-          },
-        },
-      })
-
-      const statuses = item.distribution.schools.map((school: any) =>
-        school.id === item.id ? status : school.status
-      )
-      const nextDistributionStatus = statuses.includes("DITOLAK")
-        ? "DITOLAK"
-        : statuses.every((value: string) => value === "DITERIMA")
-          ? "SELESAI"
-          : item.distribution.status
-
-      if (nextDistributionStatus !== item.distribution.status) {
-        await txAny.batchDistribution.update({
-          where: { id: item.distribution.id },
-          data: { status: nextDistributionStatus },
-        })
-      }
-
-      await tx.$executeRawUnsafe(
-        `UPDATE "batch_produksi" SET "status" = $1::"BatchStatus", "updated_at" = NOW() WHERE "id" = $2`,
-        status === "DITERIMA" ? "DITERIMA" : "DITOLAK",
-        item.distribution.batchId
-      )
-
-      await tx.schoolProgress.updateMany({
-        where: { schoolId },
-        data: { status: status === "DITERIMA" ? "DITERIMA" : "BERMASALAH" },
-      })
-
-      return txAny.batchDistributionSchool.findUniqueOrThrow({
-        where: { id: item.id },
-        include: {
-          distribution: {
-            include: {
-              batch: {
-                include: {
-                  driver: true,
-                  foto: true,
-                  menu: true,
-                },
-              },
-            },
-          },
-        },
-      })
-    })
-
-    return res.json({ distribution: toSchoolDistributionResponse(updated) })
   } catch (error) {
     next(error)
   }

@@ -1,7 +1,6 @@
-import { PrismaClient } from "@prisma/client"
 import { Request, Response } from "express"
 
-const prisma = new PrismaClient()
+import { prisma } from "../lib/prisma.js"
 
 // GET /api/settings/dapur?date=YYYY-MM-DD
 export const getDapurCapacity = async (req: Request, res: Response) => {

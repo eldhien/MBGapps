@@ -2,8 +2,6 @@ import { useEffect, useState } from "react"
 import {
   CheckCircle2Icon,
   CheckIcon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   ClockIcon,
   FlagIcon,
   ImageIcon,
@@ -36,6 +34,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { TablePagination } from "@/components/ui/table-pagination"
 import { api, type SchoolDistribution } from "@/lib/api"
 import {
   getCachedPageData,
@@ -75,7 +74,7 @@ function getStep(distribution: SchoolDistribution): 1 | 2 | 3 {
   return 1
 }
 
-function formatDate(iso: string | null): string {
+function formatDate(iso: string | null | undefined): string {
   if (!iso) return "-"
   return new Date(iso).toLocaleString("id-ID", {
     day: "2-digit",
@@ -1068,48 +1067,11 @@ export function SchoolDistributionsPage({
         </div>
 
         {!isLoading && visibleDistributions.length > DISTRIBUTIONS_PER_PAGE ? (
-          <div className="flex items-center justify-center gap-2 border-t border-[#edf0f4] p-4">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              disabled={currentPage <= 1}
-              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-            >
-              <ChevronLeftIcon />
-            </Button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }).map((_, index) => {
-                const page = index + 1
-
-                return (
-                  <button
-                    key={page}
-                    type="button"
-                    className={
-                      currentPage === page
-                        ? "flex size-8 items-center justify-center rounded-lg bg-[#f3f4f6] text-sm font-semibold"
-                        : "flex size-8 items-center justify-center rounded-lg text-sm text-muted-foreground hover:bg-[#f7f8fb]"
-                    }
-                    onClick={() => setCurrentPage(page)}
-                  >
-                    {page}
-                  </button>
-                )
-              })}
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              disabled={currentPage >= totalPages}
-              onClick={() =>
-                setCurrentPage((page) => Math.min(totalPages, page + 1))
-              }
-            >
-              <ChevronRightIcon />
-            </Button>
-          </div>
+          <TablePagination
+            page={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
         ) : null}
       </section>
 

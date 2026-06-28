@@ -1,4 +1,4 @@
-import { FotoType, PrismaClient } from "@prisma/client"
+import { FotoType } from "@prisma/client"
 import { Router } from "express"
 import multer from "multer"
 
@@ -6,8 +6,8 @@ import {
   fileBufferToDataUrl,
   uploadImageToCloudinary,
 } from "../lib/cloudinary.js"
+import { prisma } from "../lib/prisma.js"
 
-const prisma = new PrismaClient()
 export const uploadRouter = Router()
 
 const upload = multer({

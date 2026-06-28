@@ -8,45 +8,12 @@ import {
 } from "../lib/fallback-store.js"
 import { prisma } from "../lib/prisma.js"
 import { requireAuth } from "../middleware/auth.js"
+import { getReporterSchoolId, isUuid } from "../lib/user-scope.js"
 
 export const foodReportsRouter = Router()
 const reportCategories = new Set<string>(Object.values(ReportCategory))
 
 foodReportsRouter.use(requireAuth)
-
-function isUuid(value?: string | null) {
-  return Boolean(
-    value?.match(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i
-    )
-  )
-}
-
-async function getReporterSchoolId(user: {
-  id: string
-  role: string
-  schoolId?: string | null
-  username: string
-}) {
-  if (user.role !== "SEKOLAH") {
-    return null
-  }
-
-  if (user.schoolId) {
-    return user.schoolId
-  }
-
-  if (!isUuid(user.id)) {
-    return user.id
-  }
-
-  const account = await prisma.user.findUnique({
-    where: { id: user.id },
-    select: { schoolId: true },
-  })
-
-  return account?.schoolId ?? user.id
-}
 
 async function resolveReporterSchools<T extends { sekolahId: string }>(
   reports: T[]

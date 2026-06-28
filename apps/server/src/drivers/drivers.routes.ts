@@ -1,37 +1,9 @@
 import { Router } from "express"
 
-import { getCurrentUser } from "../auth/session.js"
 import { prisma } from "../lib/prisma.js"
+import { requireRoles } from "../lib/user-scope.js"
 
 export const driversRouter = Router()
-
-type SppgDriverCheck =
-  | {
-      currentUser: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>
-    }
-  | {
-      message: string
-      status: number
-    }
-
-async function requireSppgOrSuperAdmin(
-  req: Parameters<typeof getCurrentUser>[0]
-): Promise<SppgDriverCheck> {
-  const currentUser = await getCurrentUser(req)
-
-  if (!currentUser) {
-    return { status: 401, message: "Token tidak ditemukan atau tidak valid." }
-  }
-
-  if (currentUser.role !== "SUPER_ADMIN" && currentUser.role !== "SPPG") {
-    return {
-      status: 403,
-      message: "Hanya SPPG atau Super Admin yang dapat mengelola driver.",
-    }
-  }
-
-  return { currentUser }
-}
 
 function toDriverResponse(driver: {
   id: string
@@ -60,7 +32,11 @@ function cleanOptionalText(value?: string) {
 
 driversRouter.get("/", async (req, res, next) => {
   try {
-    const auth = await requireSppgOrSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN", "SPPG"],
+      "Hanya SPPG atau Super Admin yang dapat mengelola driver."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
@@ -80,7 +56,11 @@ driversRouter.get("/", async (req, res, next) => {
 
 driversRouter.post("/", async (req, res, next) => {
   try {
-    const auth = await requireSppgOrSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN", "SPPG"],
+      "Hanya SPPG atau Super Admin yang dapat mengelola driver."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
@@ -113,7 +93,11 @@ driversRouter.post("/", async (req, res, next) => {
 
 driversRouter.patch("/:id", async (req, res, next) => {
   try {
-    const auth = await requireSppgOrSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN", "SPPG"],
+      "Hanya SPPG atau Super Admin yang dapat mengelola driver."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
@@ -151,7 +135,11 @@ driversRouter.patch("/:id", async (req, res, next) => {
 
 driversRouter.delete("/:id", async (req, res, next) => {
   try {
-    const auth = await requireSppgOrSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN", "SPPG"],
+      "Hanya SPPG atau Super Admin yang dapat mengelola driver."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
@@ -162,8 +150,13 @@ driversRouter.delete("/:id", async (req, res, next) => {
     })
 
     return res.status(204).send()
-  } catch (error: any) {
-    if (error?.code === "P2003") {
+  } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "P2003"
+    ) {
       return res.status(409).json({
         message:
           "Driver sudah dipakai pada batch/distribusi. Nonaktifkan driver jika tidak ingin digunakan lagi.",

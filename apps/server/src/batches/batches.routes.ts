@@ -3,6 +3,7 @@ import { LegacyBatchStatus, UserRole } from "@prisma/client"
 
 import { getCurrentUser } from "../auth/session.js"
 import { prisma } from "../lib/prisma.js"
+import { getCurrentSchoolId } from "../lib/user-scope.js"
 
 export const batchesRouter = Router()
 const batchStatuses = new Set<string>(Object.values(LegacyBatchStatus))
@@ -21,36 +22,6 @@ type RawBatchSummary = {
   menu_name: string | null
   status: string
   waktu_produksi: Date
-}
-
-function isUuid(value?: string | null) {
-  return Boolean(
-    value?.match(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-    )
-  )
-}
-
-async function getCurrentSchoolId(user: {
-  id: string
-  role: UserRole | string
-  username: string
-}) {
-  if (isUuid(user.id)) {
-    const currentUser = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: { schoolId: true },
-    })
-
-    return currentUser?.schoolId ?? null
-  }
-
-  const existingUser = await prisma.user.findUnique({
-    where: { username: user.username },
-    select: { schoolId: true },
-  })
-
-  return existingUser?.schoolId ?? null
 }
 
 batchesRouter.get("/", async (req, res, next) => {

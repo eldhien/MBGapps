@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { TablePagination } from "@/components/ui/table-pagination"
 import { useAuth } from "@/features/auth/AuthProvider"
 import { formatRole, type UserRole } from "@/features/auth/types"
 import { api, type ManagedUser } from "@/lib/api"
@@ -37,8 +38,6 @@ import {
 } from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
   EyeIcon,
   EyeOffIcon,
   MoreVerticalIcon,
@@ -449,48 +448,11 @@ export function UsersPage() {
         </div>
 
         {!isLoading && filteredUsers.length > USERS_PER_PAGE ? (
-          <div className="flex items-center justify-center gap-2 border-t border-[#edf0f4] p-4">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              disabled={currentPage <= 1}
-              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-            >
-              <ChevronLeftIcon />
-            </Button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }).map((_, index) => {
-                const page = index + 1
-
-                return (
-                  <button
-                    key={page}
-                    type="button"
-                    className={
-                      currentPage === page
-                        ? "flex size-8 items-center justify-center rounded-lg bg-[#f3f4f6] text-sm font-semibold"
-                        : "flex size-8 items-center justify-center rounded-lg text-sm text-muted-foreground hover:bg-[#f7f8fb]"
-                    }
-                    onClick={() => setCurrentPage(page)}
-                  >
-                    {page}
-                  </button>
-                )
-              })}
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              disabled={currentPage >= totalPages}
-              onClick={() =>
-                setCurrentPage((page) => Math.min(totalPages, page + 1))
-              }
-            >
-              <ChevronRightIcon />
-            </Button>
-          </div>
+          <TablePagination
+            page={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
         ) : null}
       </section>
 

@@ -21,7 +21,12 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
-import { api, type ProductionDistribution } from "@/lib/api"
+import { TablePagination } from "@/components/ui/table-pagination"
+import {
+  api,
+  type ProductionBatch,
+  type ProductionDistribution,
+} from "@/lib/api"
 import { cn } from "@/lib/utils"
 import {
   getCachedPageData,
@@ -29,11 +34,14 @@ import {
   setCachedPageData,
   subscribePageCache,
 } from "@/lib/page-cache"
+import {
+  getBatchRemainingPortions,
+  getLatestFoodPhotoUrl,
+  toDateTimeLocal,
+} from "@/lib/production"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 import {
   CheckCircle2Icon,
-  ChevronLeftIcon,
-  ChevronRightIcon,
   EyeIcon,
   ImageIcon,
   PencilIcon,
@@ -63,55 +71,8 @@ const BATCHES_PER_PAGE = 10
 
 const createEmptyKomposisi = (): KomposisiItem => ({ namaBahan: "" })
 
-function getDistributionTotalPortions(distribution: ProductionDistribution) {
-  return distribution.schools.reduce(
-    (total, school) => total + Number(school.jumlahPorsi || 0),
-    0
-  )
-}
-
-function getAllocatedBatchPortions(
-  distributions: ProductionDistribution[],
-  batchId: string
-) {
-  return distributions
-    .filter((distribution) => distribution.batchId === batchId)
-    .reduce(
-      (total, distribution) => total + getDistributionTotalPortions(distribution),
-      0
-    )
-}
-
-function getBatchRemainingPortions(
-  batch: any,
-  distributions: ProductionDistribution[]
-) {
-  return Math.max(
-    0,
-    Number(batch?.totalPorsi ?? 0) -
-      getAllocatedBatchPortions(distributions, batch.id)
-  )
-}
-
-function toDateTimeLocal(value?: string | null) {
-  if (!value) return ""
-  const date = new Date(value)
-  date.setMinutes(date.getMinutes() - date.getTimezoneOffset())
-  return date.toISOString().slice(0, 16)
-}
-
-function getBatchFoodPhotos(batch: any) {
-  return [...(batch?.foto ?? [])]
-    .filter((item: any) => !item.jenis || item.jenis === "MAKANAN_JADI")
-    .sort((a: any, b: any) => {
-      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0
-      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0
-      return bTime - aTime
-    })
-}
-
-function getLatestFoodPhotoUrl(batch: any) {
-  return getBatchFoodPhotos(batch)[0]?.url ?? null
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
 }
 
 function getStatusBadgeClass(status?: string) {
@@ -232,13 +193,15 @@ export function BatchListPage({
 }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const cachedBatches = getCachedPageData<any[]>(
+  const cachedBatches = getCachedPageData<ProductionBatch[]>(
     pageCacheKeys.productionBatches
   )
   const cachedDistributions = getCachedPageData<ProductionDistribution[]>(
     pageCacheKeys.productionDistributions
   )
-  const [batches, setBatches] = useState<any[]>(() => cachedBatches ?? [])
+  const [batches, setBatches] = useState<ProductionBatch[]>(
+    () => cachedBatches ?? []
+  )
   const [distributions, setDistributions] = useState<
     ProductionDistribution[]
   >(() => cachedDistributions ?? [])
@@ -251,9 +214,9 @@ export function BatchListPage({
   )
   const [isSavingEdit, setIsSavingEdit] = useState(false)
   const [isDeletingBatch, setIsDeletingBatch] = useState(false)
-  const [viewTarget, setViewTarget] = useState<any>(null)
-  const [deleteTarget, setDeleteTarget] = useState<any>(null)
-  const [editTarget, setEditTarget] = useState<any>(null)
+  const [viewTarget, setViewTarget] = useState<ProductionBatch | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ProductionBatch | null>(null)
+  const [editTarget, setEditTarget] = useState<ProductionBatch | null>(null)
   const [editFotoMakanan, setEditFotoMakanan] = useState<File | null>(null)
   const [editFotoPreview, setEditFotoPreview] = useState<string | null>(null)
   const [zoomFotoUrl, setZoomFotoUrl] = useState<string | null>(null)
@@ -302,8 +265,8 @@ export function BatchListPage({
           distributionData.distributions
         )
       )
-    } catch (err: any) {
-      setError(err.message || "Gagal memuat data")
+    } catch (err) {
+      setError(getErrorMessage(err, "Gagal memuat data"))
     } finally {
       setIsLoading(false)
     }
@@ -352,22 +315,21 @@ export function BatchListPage({
       )
       setDeleteTarget(null)
       setSuccess("Batch berhasil dihapus.")
-    } catch (err: any) {
-      setError(err.message || "Gagal menghapus batch")
+    } catch (err) {
+      setError(getErrorMessage(err, "Gagal menghapus batch"))
     } finally {
       setIsDeletingBatch(false)
     }
   }
 
-  function openEditBatch(batch: any) {
-    const bahan =
-      batch.varian?.flatMap((varian: any) => varian.bahan ?? []) ?? []
+  function openEditBatch(batch: ProductionBatch) {
+    const bahan = batch.varian?.flatMap((varian) => varian.bahan ?? []) ?? []
 
     setEditTarget(batch)
     setEditFotoMakanan(null)
     setEditKomposisi(
       bahan.length
-        ? bahan.map((item: any) => ({ namaBahan: item.namaBahan ?? "" }))
+        ? bahan.map((item) => ({ namaBahan: item.namaBahan ?? "" }))
         : [createEmptyKomposisi()]
     )
     setEditForm({
@@ -403,7 +365,7 @@ export function BatchListPage({
         varian: [
           {
             namaVarian: "Utama",
-            jumlahPorsi: editForm.totalPorsi,
+            jumlahPorsi: Number(editForm.totalPorsi),
             bahan: cleanedKomposisi.map((namaBahan) => ({
               harga: 0,
               jumlah: 0,
@@ -434,15 +396,15 @@ export function BatchListPage({
       setEditFotoMakanan(null)
       setEditFotoPreview(null)
       setSuccess("Batch berhasil diperbarui.")
-    } catch (err: any) {
-      setError(err.message || "Gagal mengedit batch")
+    } catch (err) {
+      setError(getErrorMessage(err, "Gagal mengedit batch"))
     } finally {
       setIsSavingEdit(false)
     }
   }
 
   useEffect(() => {
-    const unsubscribeBatches = subscribePageCache<any[]>(
+    const unsubscribeBatches = subscribePageCache<ProductionBatch[]>(
       pageCacheKeys.productionBatches,
       (cachedData) => {
         if (cachedData) {
@@ -469,7 +431,7 @@ export function BatchListPage({
 
   useEffect(() => {
     const syncCachedData = () => {
-      const cachedBatchData = getCachedPageData<any[]>(
+      const cachedBatchData = getCachedPageData<ProductionBatch[]>(
         pageCacheKeys.productionBatches
       )
       const cachedDistributionData = getCachedPageData<
@@ -623,7 +585,11 @@ export function BatchListPage({
                         </span>
                       </td>
                       <td className="px-5 py-4 text-muted-foreground">
-                        {new Date(batch.createdAt).toLocaleDateString("id-ID")}
+                        {batch.createdAt
+                          ? new Date(batch.createdAt).toLocaleDateString(
+                              "id-ID"
+                            )
+                          : "-"}
                       </td>
                       <td className="px-5 py-4 text-right">
                         <div className="flex justify-end gap-2">
@@ -692,48 +658,11 @@ export function BatchListPage({
         </div>
 
         {!isLoading && batches.length > BATCHES_PER_PAGE ? (
-          <div className="flex items-center justify-center gap-2 border-t border-[#edf0f4] p-4">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              disabled={currentPage <= 1}
-              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-            >
-              <ChevronLeftIcon />
-            </Button>
-            <div className="flex items-center gap-1">
-              {Array.from({ length: totalPages }).map((_, index) => {
-                const page = index + 1
-
-                return (
-                  <button
-                    key={page}
-                    type="button"
-                    className={
-                      currentPage === page
-                        ? "flex size-8 items-center justify-center rounded-lg bg-[#f3f4f6] text-sm font-semibold"
-                        : "flex size-8 items-center justify-center rounded-lg text-sm text-muted-foreground hover:bg-[#f7f8fb]"
-                    }
-                    onClick={() => setCurrentPage(page)}
-                  >
-                    {page}
-                  </button>
-                )
-              })}
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              disabled={currentPage >= totalPages}
-              onClick={() =>
-                setCurrentPage((page) => Math.min(totalPages, page + 1))
-              }
-            >
-              <ChevronRightIcon />
-            </Button>
-          </div>
+          <TablePagination
+            page={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
         ) : null}
       </section>
 
@@ -791,7 +720,9 @@ export function BatchListPage({
                 <div className="flex justify-between gap-4">
                   <dt className="text-muted-foreground">Dibuat</dt>
                   <dd className="font-medium">
-                    {new Date(viewTarget.createdAt).toLocaleString("id-ID")}
+                    {viewTarget.createdAt
+                      ? new Date(viewTarget.createdAt).toLocaleString("id-ID")
+                      : "-"}
                   </dd>
                 </div>
               </dl>

@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useState } from "react"
 import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
   EyeIcon,
   PencilIcon,
   PlusIcon,
@@ -34,9 +32,11 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { TablePagination } from "@/components/ui/table-pagination"
 import {
   api,
   type Driver,
+  type ProductionBatch,
   type ProductionDistribution,
   type SchoolAccount,
 } from "@/lib/api"
@@ -46,6 +46,12 @@ import {
   setCachedPageData,
   subscribePageCache,
 } from "@/lib/page-cache"
+import {
+  formatDistributionId,
+  getBatchRemainingPortions,
+  getCurrentDateTimeLocal,
+  getDistributionStatus,
+} from "@/lib/production"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 
 type SchoolRow = {
@@ -55,84 +61,12 @@ type SchoolRow = {
 
 const DISTRIBUTION_HISTORY_PER_PAGE = 10
 
-function getCurrentDateTimeLocal() {
-  const value = new Date()
-  value.setMinutes(value.getMinutes() - value.getTimezoneOffset())
-  return value.toISOString().slice(0, 16)
-}
-
-function formatDistributionId(distribution: ProductionDistribution) {
-  const date = new Date(distribution.createdAt || distribution.waktuKirim || "")
-  const datePart = Number.isNaN(date.getTime())
-    ? "00000000"
-    : [
-        String(date.getDate()).padStart(2, "0"),
-        String(date.getMonth() + 1).padStart(2, "0"),
-        date.getFullYear(),
-      ].join("")
-  const suffix =
-    distribution.id.replace(/[^a-z0-9]/gi, "").slice(-6).toUpperCase() ||
-    "000000"
-
-  return `DST-${datePart}-${suffix}`
-}
-
-function getDistributionStatus(distribution: ProductionDistribution) {
-  return distribution.schools.some((item) => item.status === "DITOLAK")
-    ? "DITOLAK"
-    : distribution.status
-}
-
-function getBatchTotalPortions(batch: any | undefined) {
-  return Number(batch?.totalPorsi ?? batch?.jumlahPorsi ?? 0)
-}
-
-function getDistributionTotalPortions(distribution: ProductionDistribution) {
-  return distribution.schools.reduce(
-    (total, school) => total + Number(school.jumlahPorsi || 0),
-    0
-  )
-}
-
-function getAllocatedBatchPortions(
-  distributions: ProductionDistribution[],
-  batchId: string | undefined,
-  excludeDistributionId?: string
-) {
-  if (!batchId) return 0
-
-  return distributions
-    .filter(
-      (distribution) =>
-        distribution.batchId === batchId &&
-        distribution.id !== excludeDistributionId
-    )
-    .reduce(
-      (total, distribution) => total + getDistributionTotalPortions(distribution),
-      0
-    )
-}
-
-function getBatchRemainingPortions(
-  batch: any | undefined,
-  distributions: ProductionDistribution[],
-  excludeDistributionId?: string
-) {
-  if (!batch) return 0
-
-  return Math.max(
-    0,
-    getBatchTotalPortions(batch) -
-      getAllocatedBatchPortions(distributions, batch.id, excludeDistributionId)
-  )
-}
-
 function getRowsTotalPortions(rows: SchoolRow[]) {
   return rows.reduce((total, row) => total + Number(row.jumlahPorsi || 0), 0)
 }
 
 function getStockValidationMessage(
-  batch: any | undefined,
+  batch: ProductionBatch | undefined,
   rows: SchoolRow[],
   distributions: ProductionDistribution[],
   excludeDistributionId?: string
@@ -162,7 +96,7 @@ export function DistributionPage({
   const location = useLocation()
   const [searchParams] = useSearchParams()
   const selectedBatchIdFromQuery = searchParams.get("batchId") ?? ""
-  const cachedBatches = getCachedPageData<any[]>(
+  const cachedBatches = getCachedPageData<ProductionBatch[]>(
     pageCacheKeys.productionBatches
   )
   const cachedDistributions = getCachedPageData<ProductionDistribution[]>(
@@ -172,7 +106,9 @@ export function DistributionPage({
     pageCacheKeys.schoolAccounts
   )
   const cachedDrivers = getCachedPageData<Driver[]>(pageCacheKeys.drivers)
-  const [batches, setBatches] = useState<any[]>(() => cachedBatches ?? [])
+  const [batches, setBatches] = useState<ProductionBatch[]>(
+    () => cachedBatches ?? []
+  )
   const [distributions, setDistributions] = useState<ProductionDistribution[]>(
     () => cachedDistributions ?? []
   )
@@ -330,7 +266,7 @@ export function DistributionPage({
 
   async function loadData(force = false) {
     if (!force) {
-      const batchesCache = getCachedPageData<any[]>(
+      const batchesCache = getCachedPageData<ProductionBatch[]>(
         pageCacheKeys.productionBatches
       )
       const distributionsCache = getCachedPageData<ProductionDistribution[]>(
@@ -377,7 +313,7 @@ export function DistributionPage({
         setIsLoading(false)
       }
     })
-    const unsubscribeBatches = subscribePageCache<any[]>(
+    const unsubscribeBatches = subscribePageCache<ProductionBatch[]>(
       pageCacheKeys.productionBatches,
       (cachedData) => {
         if (cachedData) setBatches(cachedData)
@@ -1092,54 +1028,11 @@ export function DistributionPage({
           </div>
           {!isLoading &&
           historyDistributions.length > DISTRIBUTION_HISTORY_PER_PAGE ? (
-            <div className="flex items-center justify-center gap-2 border-t border-[#edf0f4] p-4">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                disabled={currentHistoryPage <= 1}
-                onClick={() =>
-                  setCurrentHistoryPage((page) => Math.max(1, page - 1))
-                }
-              >
-                <ChevronLeftIcon />
-              </Button>
-              <div className="flex items-center gap-1">
-                {Array.from({ length: distributionHistoryTotalPages }).map(
-                  (_, index) => {
-                    const page = index + 1
-
-                    return (
-                      <button
-                        key={page}
-                        type="button"
-                        className={
-                          currentHistoryPage === page
-                            ? "flex size-8 items-center justify-center rounded-lg bg-[#f3f4f6] text-sm font-semibold"
-                            : "flex size-8 items-center justify-center rounded-lg text-sm text-muted-foreground hover:bg-[#f7f8fb]"
-                        }
-                        onClick={() => setCurrentHistoryPage(page)}
-                      >
-                        {page}
-                      </button>
-                    )
-                  }
-                )}
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                disabled={currentHistoryPage >= distributionHistoryTotalPages}
-                onClick={() =>
-                  setCurrentHistoryPage((page) =>
-                    Math.min(distributionHistoryTotalPages, page + 1)
-                  )
-                }
-              >
-                <ChevronRightIcon />
-              </Button>
-            </div>
+            <TablePagination
+              page={currentHistoryPage}
+              totalPages={distributionHistoryTotalPages}
+              onPageChange={setCurrentHistoryPage}
+            />
           ) : null}
         </section>
       ) : null}

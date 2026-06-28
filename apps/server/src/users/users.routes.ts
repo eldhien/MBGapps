@@ -4,20 +4,11 @@ import { UserRole } from "@prisma/client"
 
 import { listDemoUsers } from "../auth/demo-users.js"
 import { prisma } from "../lib/prisma.js"
-import { getCurrentUser } from "../auth/session.js"
+import { requireRoles } from "../lib/user-scope.js"
 
 export const usersRouter = Router()
 
 const roleValues = new Set<string>(Object.values(UserRole))
-
-type SuperAdminCheck =
-  | {
-      currentUser: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>
-    }
-  | {
-      message: string
-      status: number
-    }
 
 function toUserResponse(user: {
   id: string
@@ -37,41 +28,13 @@ function normalizeUsername(username?: string) {
   return username?.trim().toLowerCase()
 }
 
-async function requireSuperAdmin(
-  req: Parameters<typeof getCurrentUser>[0]
-): Promise<SuperAdminCheck> {
-  const currentUser = await getCurrentUser(req)
-
-  if (!currentUser) {
-    return { status: 401, message: "Token tidak ditemukan atau tidak valid." }
-  }
-
-  if (currentUser.role !== "SUPER_ADMIN") {
-    return { status: 403, message: "Hanya Super Admin yang dapat mengakses pengguna." }
-  }
-
-  return { currentUser }
-}
-
-async function requireSppgOrSuperAdmin(
-  req: Parameters<typeof getCurrentUser>[0]
-): Promise<SuperAdminCheck> {
-  const currentUser = await getCurrentUser(req)
-
-  if (!currentUser) {
-    return { status: 401, message: "Token tidak ditemukan atau tidak valid." }
-  }
-
-  if (currentUser.role !== "SUPER_ADMIN" && currentUser.role !== "SPPG") {
-    return { status: 403, message: "Hanya Super Admin atau SPPG yang dapat mengakses pengguna." }
-  }
-
-  return { currentUser }
-}
-
 usersRouter.get("/", async (req, res, next) => {
   try {
-    const auth = await requireSppgOrSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN", "SPPG"],
+      "Hanya Super Admin atau SPPG yang dapat mengakses pengguna."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
@@ -95,7 +58,11 @@ usersRouter.get("/", async (req, res, next) => {
 
 usersRouter.post("/", async (req, res, next) => {
   try {
-    const auth = await requireSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN"],
+      "Hanya Super Admin yang dapat mengakses pengguna."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
@@ -146,7 +113,11 @@ usersRouter.post("/", async (req, res, next) => {
 
 usersRouter.patch("/:id", async (req, res, next) => {
   try {
-    const auth = await requireSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN"],
+      "Hanya Super Admin yang dapat mengakses pengguna."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
@@ -191,7 +162,11 @@ usersRouter.patch("/:id", async (req, res, next) => {
 
 usersRouter.delete("/:id", async (req, res, next) => {
   try {
-    const auth = await requireSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN"],
+      "Hanya Super Admin yang dapat mengakses pengguna."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })

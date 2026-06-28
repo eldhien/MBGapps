@@ -13,10 +13,8 @@ import { foodReportsRouter } from "./food-reports/food-reports.routes.js";
 import { kitchenChecklistRouter } from "./kitchen-checklist/kitchen-checklist.routes.js";
 import { studentComplaintsRouter } from "./student-complaints/student-complaints.routes.js";
 import { menuRouter } from "./menu/menu.routes.js";
-import {
-  productionDistributionsRouter,
-  schoolDistributionsRouter,
-} from "./production-distributions/production-distributions.routes.js";
+import { productionDistributionsRouter } from "./production-distributions/production-distributions.routes.js";
+import { schoolDistributionsRouter } from "./school-distributions/school-distributions.routes.js";
 import { schoolAccountsRouter } from "./school-accounts/school-accounts.routes.js";
 import { settingsRouter } from "./settings/settings.routes.js";
 import { usersRouter } from "./users/users.routes.js";

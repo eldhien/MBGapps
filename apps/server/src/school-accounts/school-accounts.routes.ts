@@ -2,19 +2,10 @@ import bcrypt from "bcryptjs"
 import { Prisma, UserRole } from "@prisma/client"
 import { Router } from "express"
 
-import { getCurrentUser } from "../auth/session.js"
 import { prisma } from "../lib/prisma.js"
+import { getSppgOwnerId, isUuid, requireRoles } from "../lib/user-scope.js"
 
 export const schoolAccountsRouter = Router()
-
-type SppgAccountCheck =
-  | {
-      currentUser: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>
-    }
-  | {
-      message: string
-      status: number
-    }
 
 function normalizeUsername(username?: string) {
   return username?.trim().toLowerCase()
@@ -23,49 +14,6 @@ function normalizeUsername(username?: string) {
 function cleanOptionalText(value?: string) {
   const cleaned = value?.trim()
   return cleaned ? cleaned : null
-}
-
-function isUuid(value?: string | null) {
-  return Boolean(
-    value?.match(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
-    )
-  )
-}
-
-async function resolveSppgOwnerId(user: {
-  id: string
-  role: UserRole | string
-  username: string
-}) {
-  if (user.role !== UserRole.SPPG) {
-    return null
-  }
-
-  if (isUuid(user.id)) {
-    return user.id
-  }
-
-  const existingUser = await prisma.user.findUnique({
-    where: { username: user.username },
-    select: { id: true, role: true },
-  })
-
-  if (existingUser?.role === UserRole.SPPG) {
-    return existingUser.id
-  }
-
-  const passwordHash = await bcrypt.hash(`${user.username}-demo`, 12)
-  const createdUser = await prisma.user.create({
-    data: {
-      passwordHash,
-      role: UserRole.SPPG,
-      username: user.username,
-    },
-    select: { id: true },
-  })
-
-  return createdUser.id
 }
 
 function toSchoolAccountResponse(school: {
@@ -154,7 +102,9 @@ async function findSchoolAccountsForUser(user: {
   username: string
 }) {
   const sppgFilter =
-    user.role === "SPPG" ? await resolveSppgOwnerId(user) : null
+    user.role === "SPPG"
+      ? await getSppgOwnerId(user, { createIfMissing: true })
+      : null
 
   return prisma.$queryRaw<RawSchoolAccount[]>`
     SELECT
@@ -182,28 +132,13 @@ async function findSchoolAccountsForUser(user: {
   `
 }
 
-async function requireSppgOrSuperAdmin(
-  req: Parameters<typeof getCurrentUser>[0]
-): Promise<SppgAccountCheck> {
-  const currentUser = await getCurrentUser(req)
-
-  if (!currentUser) {
-    return { status: 401, message: "Token tidak ditemukan atau tidak valid." }
-  }
-
-  if (currentUser.role !== "SUPER_ADMIN" && currentUser.role !== "SPPG") {
-    return {
-      status: 403,
-      message: "Hanya SPPG atau Super Admin yang dapat mengelola akun sekolah.",
-    }
-  }
-
-  return { currentUser }
-}
-
 schoolAccountsRouter.get("/", async (req, res, next) => {
   try {
-    const auth = await requireSppgOrSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN", "SPPG"],
+      "Hanya SPPG atau Super Admin yang dapat mengelola akun sekolah."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
@@ -219,7 +154,11 @@ schoolAccountsRouter.get("/", async (req, res, next) => {
 
 schoolAccountsRouter.post("/", async (req, res, next) => {
   try {
-    const auth = await requireSppgOrSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN", "SPPG"],
+      "Hanya SPPG atau Super Admin yang dapat mengelola akun sekolah."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
@@ -237,7 +176,7 @@ schoolAccountsRouter.post("/", async (req, res, next) => {
     const normalizedSchoolName = schoolName?.trim()
     const ownerSppgId =
       auth.currentUser.role === "SPPG"
-        ? await resolveSppgOwnerId(auth.currentUser)
+        ? await getSppgOwnerId(auth.currentUser, { createIfMissing: true })
         : sppgId
 
     if (!normalizedUsername || !password || !normalizedSchoolName) {
@@ -328,7 +267,11 @@ schoolAccountsRouter.post("/", async (req, res, next) => {
 
 schoolAccountsRouter.patch("/:id", async (req, res, next) => {
   try {
-    const auth = await requireSppgOrSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN", "SPPG"],
+      "Hanya SPPG atau Super Admin yang dapat mengelola akun sekolah."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
@@ -346,7 +289,7 @@ schoolAccountsRouter.patch("/:id", async (req, res, next) => {
     const normalizedSchoolName = schoolName?.trim()
     const ownerSppgId =
       auth.currentUser.role === "SPPG"
-        ? await resolveSppgOwnerId(auth.currentUser)
+        ? await getSppgOwnerId(auth.currentUser, { createIfMissing: true })
         : sppgId
 
     if (schoolName !== undefined && !normalizedSchoolName) {
@@ -444,7 +387,11 @@ schoolAccountsRouter.patch("/:id", async (req, res, next) => {
 
 schoolAccountsRouter.delete("/:id", async (req, res, next) => {
   try {
-    const auth = await requireSppgOrSuperAdmin(req)
+    const auth = await requireRoles(
+      req,
+      ["SUPER_ADMIN", "SPPG"],
+      "Hanya SPPG atau Super Admin yang dapat mengelola akun sekolah."
+    )
 
     if ("status" in auth) {
       return res.status(auth.status).json({ message: auth.message })
@@ -452,7 +399,7 @@ schoolAccountsRouter.delete("/:id", async (req, res, next) => {
 
     const ownerSppgId =
       auth.currentUser.role === "SPPG"
-        ? await resolveSppgOwnerId(auth.currentUser)
+        ? await getSppgOwnerId(auth.currentUser, { createIfMissing: true })
         : null
 
     const existingSchool = await prisma.school.findFirst({

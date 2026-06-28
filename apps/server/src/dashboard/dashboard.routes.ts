@@ -4,18 +4,16 @@ import { getCurrentUser } from "../auth/session.js"
 import { getFallbackDashboardAnalytics } from "../lib/fallback-store.js"
 import { requireAuth } from "../middleware/auth.js"
 import { prisma } from "../lib/prisma.js"
+import {
+  getManagedSchoolReportIds,
+  getReporterSchoolId,
+  getSppgOwnerId,
+  isUuid,
+} from "../lib/user-scope.js"
 
 export const dashboardRouter = Router()
 
 dashboardRouter.use(requireAuth)
-
-function isUuid(value?: string | null) {
-  return Boolean(
-    value?.match(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i
-    )
-  )
-}
 
 function getLastSevenDaysRange() {
   const now = new Date()
@@ -71,69 +69,6 @@ function formatMonitoringCode(prefix: string, date: Date) {
   return `${prefix}-${String(date.getDate()).padStart(2, "0")}${String(
     date.getMonth() + 1
   ).padStart(2, "0")}${date.getFullYear()}`
-}
-
-async function getReporterSchoolId(user: {
-  id: string
-  role: string
-  schoolId?: string | null
-  username: string
-}) {
-  if (user.role !== "SEKOLAH") {
-    return null
-  }
-
-  if (user.schoolId) {
-    return user.schoolId
-  }
-
-  if (!isUuid(user.id)) {
-    return user.id
-  }
-
-  const account = await prisma.user.findUnique({
-    where: { id: user.id },
-    select: { schoolId: true },
-  })
-
-  return account?.schoolId ?? user.id
-}
-
-async function getSppgOwnerId(user: {
-  id: string
-  role: string
-  username: string
-}) {
-  if (user.role !== "SPPG") {
-    return null
-  }
-
-  if (isUuid(user.id)) {
-    return user.id
-  }
-
-  const account = await prisma.user.findUnique({
-    where: { username: user.username },
-    select: { id: true },
-  })
-
-  return account?.id ?? null
-}
-
-async function getManagedSchoolReportIds(sppgOwnerId: string | null) {
-  if (!sppgOwnerId) return []
-
-  const schools = await prisma.school.findMany({
-    where: { sppgId: sppgOwnerId },
-    select: {
-      id: true,
-      account: { select: { id: true } },
-    },
-  })
-
-  return schools.flatMap((school) =>
-    [school.id, school.account?.id].filter(Boolean) as string[]
-  )
 }
 
 async function resolveFoodReportSchools<

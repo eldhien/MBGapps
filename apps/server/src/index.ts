@@ -17,6 +17,7 @@ import { productionDistributionsRouter } from "./production-distributions/produc
 import { schoolDistributionsRouter } from "./school-distributions/school-distributions.routes.js";
 import { schoolAccountsRouter } from "./school-accounts/school-accounts.routes.js";
 import { settingsRouter } from "./settings/settings.routes.js";
+import { ensureSuperadminUser } from "./auth/system-user.js";
 import { usersRouter } from "./users/users.routes.js";
 
 const app = express();
@@ -63,6 +64,16 @@ app.use(
   },
 );
 
-app.listen(env.port, () => {
-  console.log(`Server ready on http://localhost:${env.port}`);
-});
+async function start() {
+  try {
+    await ensureSuperadminUser();
+  } catch (error) {
+    console.error("Gagal memastikan akun superadmin database.", error);
+  }
+
+  app.listen(env.port, () => {
+    console.log(`Server ready on http://localhost:${env.port}`);
+  });
+}
+
+void start();

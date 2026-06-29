@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react"
 
@@ -15,6 +16,10 @@ type AuthContextValue = {
   isAuthenticated: boolean
   profile: UserProfile | null
   refreshProfile: () => Promise<UserProfile | null>
+  signIn: (payload: {
+    password: string
+    username: string
+  }) => Promise<UserProfile | null>
   signOut: () => Promise<void>
 }
 
@@ -23,20 +28,40 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const sessionVersionRef = useRef(0)
 
   const refreshProfile = useCallback(async () => {
-    if (!getAccessToken()) {
-      setProfile(null)
+    const requestVersion = sessionVersionRef.current
+    const token = getAccessToken()
+
+    if (!token) {
+      if (sessionVersionRef.current === requestVersion) {
+        setProfile(null)
+      }
+
       return null
     }
 
     try {
       const response = await api.me()
-      setProfile(response.user)
+
+      if (
+        sessionVersionRef.current === requestVersion &&
+        getAccessToken() === token
+      ) {
+        setProfile(response.user)
+      }
+
       return response.user
     } catch {
-      clearAccessToken()
-      setProfile(null)
+      if (
+        sessionVersionRef.current === requestVersion &&
+        getAccessToken() === token
+      ) {
+        clearAccessToken()
+        setProfile(null)
+      }
+
       return null
     }
   }, [])
@@ -59,7 +84,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [refreshProfile])
 
+  const signIn = useCallback(
+    async (payload: { password: string; username: string }) => {
+      sessionVersionRef.current += 1
+      const response = await api.login(payload)
+
+      setProfile(response.user)
+      setIsLoading(false)
+
+      return response.user
+    },
+    []
+  )
+
   const signOut = useCallback(async () => {
+    sessionVersionRef.current += 1
+
     try {
       await api.logout()
     } catch {
@@ -75,9 +115,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: Boolean(profile),
       profile,
       refreshProfile,
+      signIn,
       signOut,
     }),
-    [isLoading, profile, refreshProfile, signOut]
+    [isLoading, profile, refreshProfile, signIn, signOut]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

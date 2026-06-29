@@ -17,6 +17,7 @@ import {
   BellIcon,
   CheckCheckIcon,
   ClipboardListIcon,
+  MenuIcon,
   PackagePlusIcon,
   SearchIcon,
   XIcon,
@@ -27,6 +28,21 @@ import { Link, useLocation, useNavigate } from "react-router-dom"
 const READ_BATCH_KEY = "mbg_read_batch_notifications"
 
 const topbarCache = new Map<string, DashboardTopbarData>()
+
+function MobileSidebarButton() {
+  const { toggleSidebar } = useSidebar()
+
+  return (
+    <button
+      type="button"
+      className="flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-full border border-[#edf0f4] bg-white text-muted-foreground shadow-[0_8px_22px_rgba(15,23,42,0.04)] transition-colors hover:bg-[#f7f9ff] hover:text-[#0528f2] md:hidden"
+      aria-label="Buka menu navigasi"
+      onClick={toggleSidebar}
+    >
+      <MenuIcon className="size-4" />
+    </button>
+  )
+}
 
 function DashboardShellFrame({
   children,
@@ -293,15 +309,18 @@ export function DashboardShell({
         variant={variant}
         header={
           <div className="flex w-full items-center justify-between gap-4">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground">
-              Halo {userName},
-            </p>
-            <h1 className="truncate text-xl font-semibold tracking-tight">
-              {greeting}
-            </h1>
-          </div>
-          <div className="flex min-w-0 shrink-0 items-center gap-2">
+            <div className="flex min-w-0 items-center gap-3">
+              <MobileSidebarButton />
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Halo {userName},
+                </p>
+                <h1 className="truncate text-xl font-semibold tracking-tight">
+                  {greeting}
+                </h1>
+              </div>
+            </div>
+            <div className="flex min-w-0 shrink-0 items-center gap-2">
               <div ref={searchBoxRef} className="relative flex items-center">
                 <button
                   type="button"

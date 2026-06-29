@@ -169,6 +169,44 @@
   background: oklch(0.556 0 0 / 30%);
 }
 
+.table-scroll-area {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+}
+
+.table-scroll-area::-webkit-scrollbar {
+  height: 7px;
+}
+
+.table-scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.table-scroll-area::-webkit-scrollbar-thumb {
+  background: oklch(0.556 0 0 / 18%);
+  border-radius: 9999px;
+}
+
+.table-scroll-area::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.556 0 0 / 32%);
+}
+
+@media (max-width: 767px) {
+  .table-scroll-area {
+    touch-action: pan-x pan-y;
+  }
+
+  .table-scroll-area > table th,
+  .table-scroll-area > table td {
+    white-space: nowrap;
+  }
+}
+
 .input-focus-effect {
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }

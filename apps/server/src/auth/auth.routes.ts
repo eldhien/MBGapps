@@ -1,18 +1,18 @@
-import bcrypt from "bcryptjs"
-import { type Request, Router } from "express"
+import bcrypt from "bcryptjs";
+import { type Request, Router } from "express";
 
-import { env } from "../config/env.js"
-import { prisma } from "../lib/prisma.js"
-import { findDemoUserByUsername } from "./demo-users.js"
-import { createSession, getCurrentUser } from "./session.js"
-import { canAccessWebsite, type UserRole } from "./roles.js"
+import { env } from "../config/env.js";
+import { prisma } from "../lib/prisma.js";
+import { findDemoUserByUsername } from "./demo-users.js";
+import { createSession, getCurrentUser } from "./session.js";
+import { canAccessWebsite, type UserRole } from "./roles.js";
 
-export const authRouter = Router()
+export const authRouter = Router();
 
 function toAuthResponse(profile: {
-  id: string
-  username: string
-  role: UserRole
+  id: string;
+  username: string;
+  role: UserRole;
 }) {
   return {
     user: {
@@ -20,177 +20,179 @@ function toAuthResponse(profile: {
       username: profile.username,
       role: profile.role,
     },
-  }
+  };
 }
 
 function normalizeUsername(username?: string) {
-  return username?.trim().toLowerCase()
+  return username?.trim().toLowerCase();
 }
 
 function getLogoutRedirectTarget(req: Request) {
-  const requestOrigin = req.get("origin")
+  const requestOrigin = req.get("origin");
   if (requestOrigin) {
-    return requestOrigin
+    return requestOrigin;
   }
 
-  const referer = req.get("referer")
+  const referer = req.get("referer");
   if (referer) {
     try {
-      return new URL(referer).origin
+      return new URL(referer).origin;
     } catch {
       // Abaikan referer yang tidak valid dan gunakan fallback.
     }
   }
 
-  return env.clientOrigins[0] ?? "http://localhost:5173"
+  return env.clientOrigins[0] ?? "http://localhost:5173";
 }
 
 authRouter.post("/signup", async (req, res, next) => {
   try {
     const { password, username } = req.body as {
-      password?: string
-      username?: string
-    }
-    const normalizedUsername = normalizeUsername(username)
-    const role: UserRole = "SPPG"
+      password?: string;
+      username?: string;
+    };
+    const normalizedUsername = normalizeUsername(username);
+    const role: UserRole = "SPPG";
 
     if (!password || !normalizedUsername) {
       return res
         .status(400)
-        .json({ message: "Username dan password wajib diisi." })
+        .json({ message: "Username dan password wajib diisi." });
     }
 
     if (!/^[a-z0-9_]{3,32}$/.test(normalizedUsername)) {
       return res.status(400).json({
         message:
           "Username harus 3-32 karakter dan hanya boleh berisi huruf kecil, angka, atau underscore.",
-      })
+      });
     }
 
     if (password.length < 6) {
       return res.status(400).json({
         message: "Password minimal 6 karakter.",
-      })
+      });
     }
 
     const existingProfile = await prisma.user.findUnique({
       where: { username: normalizedUsername },
-    })
+    });
 
     if (existingProfile) {
       return res.status(409).json({
         message: "Username sudah digunakan.",
-      })
+      });
     }
 
-    const passwordHash = await bcrypt.hash(password, 12)
+    const passwordHash = await bcrypt.hash(password, 12);
     const profile = await prisma.user.create({
       data: {
         passwordHash,
         role,
         username: normalizedUsername,
       },
-    })
+    });
 
     return res.status(201).json({
       ...toAuthResponse(profile),
       session: createSession(profile),
-    })
+    });
   } catch (error) {
-    next(error)
+    next(error);
   }
-})
+});
 
 authRouter.post("/login", async (req, res, next) => {
   try {
     const { password, username } = req.body as {
-      password?: string
-      username?: string
-    }
-    const normalizedUsername = normalizeUsername(username)
+      password?: string;
+      username?: string;
+    };
+    const normalizedUsername = normalizeUsername(username);
 
     if (!normalizedUsername || !password) {
       return res
         .status(400)
-        .json({ message: "Username dan password wajib diisi." })
+        .json({ message: "Username dan password wajib diisi." });
     }
 
-    const demoProfile = findDemoUserByUsername(normalizedUsername)
+    const demoProfile = findDemoUserByUsername(normalizedUsername);
 
     if (demoProfile) {
       if (demoProfile.password !== password) {
         return res
           .status(401)
-          .json({ message: "Username atau password tidak valid." })
+          .json({ message: "Username atau password tidak valid." });
       }
 
       return res.json({
         ...toAuthResponse(demoProfile),
         session: createSession(demoProfile),
-      })
+      });
     }
 
-    let profile
+    let profile;
 
     try {
       profile = await prisma.user.findUnique({
         where: { username: normalizedUsername },
-      })
+      });
     } catch {
       return res.status(503).json({
-        message:
-          "Database belum tersedia. Gunakan akun demo yang disiapkan atau aktifkan database lokal.",
-      })
+        message: "Database belum tersedia.",
+      });
     }
 
     if (!profile) {
       return res
         .status(401)
-        .json({ message: "Username atau password tidak valid." })
+        .json({ message: "Username atau password tidak valid." });
     }
 
-    const isPasswordValid = await bcrypt.compare(password, profile.passwordHash)
+    const isPasswordValid = await bcrypt.compare(
+      password,
+      profile.passwordHash,
+    );
 
     if (!isPasswordValid) {
       return res
         .status(401)
-        .json({ message: "Username atau password tidak valid." })
+        .json({ message: "Username atau password tidak valid." });
     }
 
     return res.json({
       ...toAuthResponse(profile),
       session: createSession(profile),
-    })
+    });
   } catch (error) {
-    next(error)
+    next(error);
   }
-})
+});
 
 authRouter.get("/me", async (req, res, next) => {
   try {
-    const profile = await getCurrentUser(req)
+    const profile = await getCurrentUser(req);
 
     if (!profile || !canAccessWebsite(profile.role)) {
       return res.status(403).json({
         message: "Akun tidak memiliki akses website.",
-      })
+      });
     }
 
-    return res.json(toAuthResponse(profile))
+    return res.json(toAuthResponse(profile));
   } catch (error) {
     if (error instanceof Error && error.name === "JsonWebTokenError") {
-      return res.status(401).json({ message: "Sesi tidak valid." })
+      return res.status(401).json({ message: "Sesi tidak valid." });
     }
 
-    next(error)
+    next(error);
   }
-})
+});
 
 authRouter.post("/logout", (_req, res) => {
-  return res.status(204).send()
-})
+  return res.status(204).send();
+});
 
 authRouter.get("/logout", (req, res) => {
-  const clientOrigin = getLogoutRedirectTarget(req)
-  return res.redirect(303, `${clientOrigin}/login`)
-})
+  const clientOrigin = getLogoutRedirectTarget(req);
+  return res.redirect(303, `${clientOrigin}/login`);
+});

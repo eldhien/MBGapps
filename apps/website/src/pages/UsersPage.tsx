@@ -341,7 +341,7 @@ export function UsersPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="table-scroll-area">
           <table className="w-full min-w-210 text-sm">
             <thead>
               <tr className="border-b border-[#edf0f4] bg-[#fcfcfd] text-left text-xs text-muted-foreground">

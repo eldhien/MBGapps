@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button"
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/features/auth/AuthProvider"
-import { api } from "@/lib/api"
 import logoSrc from "@/assets/logo.svg"
 import { EyeIcon, EyeOffIcon } from "lucide-react"
 import { useState, type ComponentProps, type FormEvent } from "react"
@@ -12,10 +11,13 @@ import { Link, useNavigate } from "react-router-dom"
 
 export function LoginForm({ className, ...props }: ComponentProps<"div">) {
   const navigate = useNavigate()
-  const { refreshProfile } = useAuth()
+  const { signIn } = useAuth()
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
+  const errorTitle = error?.toLowerCase().includes("akun tidak ditemukan")
+    ? "Akun belum terdaftar"
+    : "Gagal masuk"
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -27,8 +29,7 @@ export function LoginForm({ className, ...props }: ComponentProps<"div">) {
     const password = String(formData.get("password") ?? "")
 
     try {
-      await api.login({ password, username })
-      await refreshProfile()
+      await signIn({ password, username })
       navigate("/dashboard", {
         replace: true,
         state: { loginSuccess: true },
@@ -43,7 +44,7 @@ export function LoginForm({ className, ...props }: ComponentProps<"div">) {
     <div className={cn("flex flex-col gap-6", className)} {...props}>
       {error ? (
         <AlertToast
-          title="Gagal masuk"
+          title={errorTitle}
           description={error}
           variant="destructive"
           onClose={() => setError(null)}

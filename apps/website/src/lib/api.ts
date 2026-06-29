@@ -354,9 +354,14 @@ export type SchoolDistribution = {
   batch: ProductionBatch
 }
 
-async function request<T>(path: string, options: RequestInit = {}) {
+type ApiRequestOptions = RequestInit & {
+  authRedirect?: boolean
+}
+
+async function request<T>(path: string, options: ApiRequestOptions = {}) {
+  const { authRedirect = true, ...requestOptions } = options
   const token = getAccessToken()
-  const headers = new Headers(options.headers)
+  const headers = new Headers(requestOptions.headers)
 
   headers.set("Content-Type", "application/json")
 
@@ -365,14 +370,24 @@ async function request<T>(path: string, options: RequestInit = {}) {
   }
 
   const response = await fetch(`${API_URL}${path}`, {
-    ...options,
+    ...requestOptions,
     headers,
   })
 
   if (response.status === 401) {
-    clearAccessToken()
-    window.location.href = "/login"
-    throw new Error("Sesi berakhir. Silakan login kembali.")
+    const payload = (await response.json().catch(() => null)) as {
+      message?: string
+      error?: string
+    } | null
+
+    if (token && getAccessToken() === token) {
+      clearAccessToken()
+      if (authRedirect && window.location.pathname !== "/login") {
+        window.location.href = "/login"
+      }
+    }
+
+    throw new Error(payload?.message ?? "Sesi berakhir. Silakan login kembali.")
   }
 
   if (!response.ok) {
@@ -405,8 +420,11 @@ export function clearAccessToken() {
 
 export const api = {
   async login(payload: { password: string; username: string }) {
+    clearAccessToken()
+
     const response = await request<AuthResponse>("/auth/login", {
       method: "POST",
+      authRedirect: false,
       body: JSON.stringify(payload),
     })
 
@@ -417,7 +435,7 @@ export const api = {
     return response
   },
   me() {
-    return request<AuthResponse>("/auth/me")
+    return request<AuthResponse>("/auth/me", { authRedirect: false })
   },
   async logout() {
     try {

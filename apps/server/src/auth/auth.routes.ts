@@ -4,6 +4,7 @@ import { type Request, Router } from "express";
 import { env } from "../config/env.js";
 import { prisma } from "../lib/prisma.js";
 import { findDemoUserByUsername } from "./demo-users.js";
+import { ensureSuperadminUser, SUPERADMIN_USERNAME } from "./system-user.js";
 import { createSession, getCurrentUser } from "./session.js";
 import { canAccessWebsite, type UserRole } from "./roles.js";
 
@@ -115,28 +116,28 @@ authRouter.post("/login", async (req, res, next) => {
         .json({ message: "Username dan password wajib diisi." });
     }
 
-    const demoProfile = findDemoUserByUsername(normalizedUsername);
-
-    if (demoProfile) {
-      if (demoProfile.password !== password) {
-        return res
-          .status(401)
-          .json({ message: "Username atau password tidak valid." });
-      }
-
-      return res.json({
-        ...toAuthResponse(demoProfile),
-        session: createSession(demoProfile),
-      });
-    }
-
     let profile;
 
     try {
+      if (normalizedUsername === SUPERADMIN_USERNAME) {
+        await ensureSuperadminUser();
+      }
+
       profile = await prisma.user.findUnique({
         where: { username: normalizedUsername },
       });
     } catch {
+      if (normalizedUsername === SUPERADMIN_USERNAME) {
+        const demoProfile = findDemoUserByUsername(normalizedUsername);
+
+        if (demoProfile?.password === password) {
+          return res.json({
+            ...toAuthResponse(demoProfile),
+            session: createSession(demoProfile),
+          });
+        }
+      }
+
       return res.status(503).json({
         message: "Database belum tersedia.",
       });
@@ -145,7 +146,7 @@ authRouter.post("/login", async (req, res, next) => {
     if (!profile) {
       return res
         .status(401)
-        .json({ message: "Username atau password tidak valid." });
+        .json({ message: "Akun tidak ditemukan. Periksa username atau hubungi admin." });
     }
 
     const isPasswordValid = await bcrypt.compare(
@@ -156,7 +157,7 @@ authRouter.post("/login", async (req, res, next) => {
     if (!isPasswordValid) {
       return res
         .status(401)
-        .json({ message: "Username atau password tidak valid." });
+        .json({ message: "Password salah. Coba periksa kembali password kamu." });
     }
 
     return res.json({
@@ -172,7 +173,13 @@ authRouter.get("/me", async (req, res, next) => {
   try {
     const profile = await getCurrentUser(req);
 
-    if (!profile || !canAccessWebsite(profile.role)) {
+    if (!profile) {
+      return res.status(401).json({
+        message: "Token tidak ditemukan atau tidak valid.",
+      });
+    }
+
+    if (!canAccessWebsite(profile.role)) {
       return res.status(403).json({
         message: "Akun tidak memiliki akses website.",
       });

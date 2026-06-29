@@ -15,7 +15,7 @@ type TokenPayload = {
 function isUuid(value?: string | null) {
   return Boolean(
     value?.match(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
     )
   )
 }
@@ -49,6 +49,28 @@ export async function getCurrentUser(req: Request) {
 
   const payload = jwt.verify(token, env.jwtSecret) as TokenPayload
 
+  if (isUuid(payload.sub)) {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: payload.sub },
+      })
+
+      if (user) {
+        return user
+      }
+    } catch {
+      if (payload.username && payload.role) {
+        return {
+          id: payload.sub,
+          username: payload.username,
+          role: payload.role,
+        }
+      }
+
+      return null
+    }
+  }
+
   const demoUser =
     findDemoUserById(payload.sub) ??
     findDemoUserByUsername(payload.username ?? null)
@@ -61,19 +83,5 @@ export async function getCurrentUser(req: Request) {
     return null
   }
 
-  try {
-    return await prisma.user.findUnique({
-      where: { id: payload.sub },
-    })
-  } catch {
-    if (payload.username && payload.role) {
-      return {
-        id: payload.sub,
-        username: payload.username,
-        role: payload.role,
-      }
-    }
-
-    return null
-  }
+  return null
 }

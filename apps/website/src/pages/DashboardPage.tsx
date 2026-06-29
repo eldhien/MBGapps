@@ -475,7 +475,7 @@ export function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
+            <div className="table-scroll-area">
               <table className="w-full min-w-[720px] text-left text-sm">
                 <thead className="border-y border-[#edf0f4] bg-white text-xs text-muted-foreground">
                   <tr>

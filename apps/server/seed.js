@@ -15,8 +15,6 @@ async function upsertUser(username, password, role) {
 
 async function main() {
   await upsertUser("superadmin", "superadmin", "SUPER_ADMIN")
-  await upsertUser("embege", "embege", "SPPG")
-  await upsertUser("sekolah", "sekolah", "SEKOLAH")
 
   console.log("Users seeded")
 }

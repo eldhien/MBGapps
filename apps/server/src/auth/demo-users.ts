@@ -16,20 +16,6 @@ export const demoUsers: DemoUser[] = [
     role: "SUPER_ADMIN",
     createdAt: new Date("2026-01-01T00:00:00.000Z"),
   },
-  {
-    id: "demo-embege",
-    username: "embege",
-    password: "embege",
-    role: "SPPG",
-    createdAt: new Date("2026-01-01T00:00:00.000Z"),
-  },
-  {
-    id: "demo-sekolah",
-    username: "sekolah",
-    password: "sekolah",
-    role: "SEKOLAH",
-    createdAt: new Date("2026-01-01T00:00:00.000Z"),
-  },
 ]
 
 export function findDemoUserById(id?: string | null) {

@@ -24,13 +24,13 @@ export function TablePagination({
   return (
     <div
       className={cn(
-        "flex items-center justify-end gap-2 border-t border-[#edf0f4] px-4 py-3",
+        "flex max-w-full items-center justify-center gap-2 overflow-x-auto border-t border-[#edf0f4] px-4 py-3 sm:justify-end",
         className
       )}
     >
       <button
         type="button"
-        className="flex size-8 cursor-pointer items-center justify-center rounded-lg border border-[#edf0f4] bg-white text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-[#edf0f4] bg-white text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
         disabled={activePage <= 1}
         onClick={() => onPageChange(Math.max(1, activePage - 1))}
         aria-label="Halaman sebelumnya"
@@ -46,7 +46,7 @@ export function TablePagination({
             key={nextPage}
             type="button"
             className={cn(
-              "flex size-8 cursor-pointer items-center justify-center rounded-lg text-sm font-medium text-muted-foreground",
+              "flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-sm font-medium text-muted-foreground",
               activePage === nextPage
                 ? "bg-[#f3f5f8] text-foreground"
                 : "hover:bg-[#f7f9ff] hover:text-[#0528f2]"
@@ -61,7 +61,7 @@ export function TablePagination({
 
       <button
         type="button"
-        className="flex size-8 cursor-pointer items-center justify-center rounded-lg border border-[#edf0f4] bg-white text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
+        className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-[#edf0f4] bg-white text-muted-foreground disabled:cursor-not-allowed disabled:opacity-40"
         disabled={activePage >= totalPages}
         onClick={() => onPageChange(Math.min(totalPages, activePage + 1))}
         aria-label="Halaman berikutnya"

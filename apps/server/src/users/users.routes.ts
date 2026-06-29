@@ -4,7 +4,7 @@ import { UserRole } from "@prisma/client"
 
 import { listDemoUsers } from "../auth/demo-users.js"
 import { prisma } from "../lib/prisma.js"
-import { requireRoles } from "../lib/user-scope.js"
+import { isUuid, requireRoles } from "../lib/user-scope.js"
 
 export const usersRouter = Router()
 
@@ -178,8 +178,50 @@ usersRouter.delete("/:id", async (req, res, next) => {
         .json({ message: "Kamu tidak dapat menghapus akun sendiri." })
     }
 
-    await prisma.user.delete({
+    if (!isUuid(req.params.id)) {
+      return res
+        .status(400)
+        .json({ message: "Akun demo tidak dapat dihapus dari database." })
+    }
+
+    const user = await prisma.user.findUnique({
       where: { id: req.params.id },
+      select: { id: true, role: true, username: true },
+    })
+
+    if (!user) {
+      return res.status(404).json({ message: "Akun tidak ditemukan." })
+    }
+
+    const [
+      managedSchoolsCount,
+      productionBatchesCount,
+      schoolBatchesCount,
+    ] = await Promise.all([
+      prisma.school.count({ where: { sppgId: user.id } }),
+      prisma.batchProduksi.count({ where: { petugasId: user.id } }),
+      prisma.batchSekolah.count({ where: { sekolahId: user.id } }),
+    ])
+    const blockers = [
+      managedSchoolsCount
+        ? `${managedSchoolsCount.toLocaleString("id-ID")} sekolah`
+        : null,
+      productionBatchesCount
+        ? `${productionBatchesCount.toLocaleString("id-ID")} batch produksi`
+        : null,
+      schoolBatchesCount
+        ? `${schoolBatchesCount.toLocaleString("id-ID")} batch sekolah`
+        : null,
+    ].filter(Boolean)
+
+    if (blockers.length) {
+      return res.status(409).json({
+        message: `Akun ${user.username} tidak dapat dihapus karena masih terhubung dengan ${blockers.join(", ")}. Pindahkan atau hapus data terkait terlebih dahulu.`,
+      })
+    }
+
+    await prisma.user.delete({
+      where: { id: user.id },
     })
 
     return res.status(204).send()

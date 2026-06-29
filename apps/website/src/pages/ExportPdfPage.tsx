@@ -226,15 +226,9 @@ function escapeHtml(value: unknown) {
     .replaceAll("'", "&#039;")
 }
 
-function statusPill(status: unknown) {
-  const value = String(status ?? "-")
-  const tone =
-    value === "DITERIMA" || value === "SELESAI"
-      ? "success"
-      : value === "DITOLAK" || value === "BERMASALAH"
-        ? "danger"
-        : "warning"
-  return `<span class="pill ${tone}">${escapeHtml(value)}</span>`
+function capitalize(value: string) {
+  if (!value) return ""
+  return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase()
 }
 
 function buildRows(items: string[][]) {
@@ -286,7 +280,7 @@ function getRiskSummary(analytics: DashboardAnalytics) {
         : 0,
     pendingRate,
     riskLabel:
-      riskScore >= 70 ? "Tinggi" : riskScore >= 40 ? "Sedang" : "Rendah",
+      riskScore >= 70 ? "TINGGI" : riskScore >= 40 ? "SEDANG" : "RENDAH",
     riskScore,
     securityLabel:
       securityScore >= 85
@@ -299,120 +293,137 @@ function getRiskSummary(analytics: DashboardAnalytics) {
   }
 }
 
-function buildReportSections(selectedReports: ReportType[], data: ExportData) {
+function buildReportSections(selectedReports: ReportType[], data: ExportData, dateRangeLabel: string) {
   const analytics = data.analytics ?? emptyAnalytics
   const risk = getRiskSummary(analytics)
 
-  return selectedReports
-    .map((reportType) => {
-      if (reportType === "production") {
-        const rows = data.batches
-          .slice(0, 50)
-          .map((batch) => [
-            escapeHtml(batch.id),
-            escapeHtml(batch.menu?.name ?? batch.namaMenu ?? "-"),
-            escapeHtml(
-              formatNumber(Number(batch.totalPorsi ?? batch.jumlahPorsi ?? 0))
-            ),
-            statusPill(batch.status),
-            escapeHtml(formatDate(batch.createdAt ?? batch.waktuProduksi)),
-          ])
+  const sections: string[] = []
+  
+  let sectionCounter = 1;
+  const toRoman = (num: number) => ["", "I", "II", "III", "IV", "V", "VI", "VII"][num] || String(num)
 
-        return `
-          <section>
-            <div class="section-title">
-              <h2>Produksi Batch</h2>
-              <span>${formatNumber(data.batches.length)} batch</span>
-            </div>
-            ${buildTable(["Batch", "Menu", "Porsi", "Status", "Tanggal"], rows, "Belum ada data produksi.")}
-          </section>
-        `
-      }
+  // I. RINGKASAN UMUM (Selalu ada)
+  sections.push(`
+    <section>
+      <h2>${toRoman(sectionCounter++)}. RINGKASAN UMUM</h2>
+      <div class="box-text">
+        <p>Laporan ini disusun untuk memberikan gambaran menyeluruh mengenai pelaksanaan operasional Program Makan Bergizi Gratis (MBG) selama periode ${escapeHtml(dateRangeLabel)}, yang meliputi aktivitas produksi batch makanan, proses distribusi ke satuan pendidikan, indikator risiko operasional, serta rekapitulasi keluhan dan laporan permasalahan dari pihak sekolah maupun siswa.</p>
+      </div>
+    </section>
+  `)
 
-      if (reportType === "distribution") {
-        const rows = data.distributions
-          .slice(0, 50)
-          .map((distribution) => [
-            escapeHtml(distribution.batchId),
-            escapeHtml(distribution.batch?.menu?.name ?? "-"),
-            escapeHtml(formatDate(distribution.waktuKirim)),
-            escapeHtml(formatNumber(distribution.schools.length)),
-            statusPill(distribution.status),
-          ])
+  if (selectedReports.includes("production")) {
+    const rows = data.batches
+      .slice(0, 50)
+      .map((batch) => [
+        escapeHtml(batch.id),
+        escapeHtml(batch.menu?.name ?? batch.namaMenu ?? "-"),
+        escapeHtml(formatNumber(Number(batch.totalPorsi ?? batch.jumlahPorsi ?? 0))),
+        escapeHtml(capitalize(batch.status ?? "-")),
+        escapeHtml(formatDate(batch.createdAt ?? batch.waktuProduksi)),
+      ])
 
-        return `
-          <section>
-            <div class="section-title">
-              <h2>Distribusi</h2>
-              <span>${formatNumber(data.distributions.length)} pengiriman</span>
-            </div>
-            ${buildTable(["Batch", "Menu", "Waktu Kirim", "Sekolah", "Status"], rows, "Belum ada data distribusi.")}
-          </section>
-        `
-      }
+    sections.push(`
+      <section>
+        <h2>${toRoman(sectionCounter++)}. DATA PRODUKSI BATCH</h2>
+        <p class="section-desc">Berikut adalah rekapitulasi seluruh batch produksi yang tercatat dalam sistem selama periode pelaporan, mencakup kode batch, menu, jumlah porsi, status produksi, serta tanggal dan waktu pencatatan.</p>
+        ${buildTable(["Kode Batch", "Menu", "Porsi", "Status", "Tanggal & Waktu"], rows, "Belum ada data produksi.")}
+        <p class="section-note">Catatan: Sejumlah entri menu merupakan data hasil pengujian sistem (data dummy) yang masih tercatat pada basis data produksi periode ini.</p>
+      </section>
+    `)
+  }
 
-      if (reportType === "risk") {
-        return `
-          <section>
-            <div class="section-title">
-              <h2>Risiko Operasional</h2>
-              <span>${escapeHtml(risk.riskLabel)}</span>
-            </div>
-            <div class="metric-grid">
-              <div class="metric"><small>Skor Risiko</small><strong>${formatPercentage(risk.riskScore)}</strong></div>
-              <div class="metric"><small>Indeks Keamanan</small><strong>${formatPercentage(risk.securityScore)}</strong></div>
-              <div class="metric"><small>Status Keamanan</small><strong>${escapeHtml(risk.securityLabel)}</strong></div>
-              <div class="metric"><small>Distribusi Pending</small><strong>${formatPercentage(risk.pendingRate)}</strong></div>
-            </div>
-            <div class="bars">
-              <label>Laporan makanan <span>${formatPercentage(risk.foodReportRatio)}</span></label>
-              <div><i style="width:${formatPercentage(risk.foodReportRatio)}"></i></div>
-              <label>Keluhan siswa <span>${formatPercentage(risk.complaintRatio)}</span></label>
-              <div><i style="width:${formatPercentage(risk.complaintRatio)}"></i></div>
-              <label>Tekanan distribusi pending <span>${formatPercentage(risk.pendingRate)}</span></label>
-              <div><i style="width:${formatPercentage(risk.pendingRate)}"></i></div>
-            </div>
-          </section>
-        `
-      }
+  if (selectedReports.includes("distribution")) {
+    const rows = data.distributions
+      .slice(0, 50)
+      .map((distribution) => [
+        escapeHtml(distribution.batchId),
+        escapeHtml(distribution.batch?.menu?.name ?? "-"),
+        escapeHtml(formatDate(distribution.waktuKirim)),
+        escapeHtml(formatNumber(distribution.schools.length)),
+        escapeHtml(capitalize(distribution.status ?? "-")),
+      ])
 
-      const foodReportRows = data.foodReports
-        .slice(0, 30)
-        .map((report) => [
-          escapeHtml(formatDate(report.createdAt)),
-          escapeHtml(report.sekolahUsername ?? report.sekolahId),
-          escapeHtml(
-            report.kategori === "LAINNYA"
-              ? report.kategoriLainnya
-              : report.kategori
-          ),
-          statusPill(report.status),
-          escapeHtml(report.deskripsi),
-        ])
-      const complaintRows = data.studentComplaints
-        .slice(0, 30)
-        .map((complaint) => [
-          escapeHtml(formatDate(complaint.waktuKejadian)),
-          escapeHtml(complaint.sekolahUsername ?? complaint.sekolahId),
-          escapeHtml(formatNumber(complaint.jumlahSiswa)),
-          escapeHtml(complaint.gejala),
-          escapeHtml(complaint.tindakan),
-        ])
+    sections.push(`
+      <section>
+        <h2>${toRoman(sectionCounter++)}. DATA DISTRIBUSI</h2>
+        <p class="section-desc">Tabel berikut merangkum proses distribusi makanan dari hasil produksi batch ke satuan pendidikan tujuan, termasuk waktu pengiriman, jumlah sekolah penerima, serta status akhir pengiriman pada masing-masing batch.</p>
+        ${buildTable(["Kode Batch", "Menu", "Waktu Kirim", "Jumlah Sekolah", "Status"], rows, "Belum ada data distribusi.")}
+      </section>
+    `)
+  }
 
-      return `
-        <section>
-          <div class="section-title">
-            <h2>Keluhan & Laporan Sekolah</h2>
-            <span>${formatNumber(data.foodReports.length + data.studentComplaints.length)} item</span>
-          </div>
-          <h3>Laporan Masalah Makanan</h3>
-          ${buildTable(["Tanggal", "Sekolah", "Kategori", "Status", "Deskripsi"], foodReportRows, "Belum ada laporan makanan.")}
-          <h3>Keluhan Siswa</h3>
-          ${buildTable(["Waktu", "Sekolah", "Siswa", "Gejala", "Tindakan"], complaintRows, "Belum ada keluhan siswa.")}
-        </section>
-      `
-    })
-    .join("")
+  if (selectedReports.includes("risk")) {
+    const riskRows = [
+      ["Distribusi Tertunda (Pending)", formatPercentage(risk.pendingRate)],
+      ["Laporan Permasalahan Makanan", formatPercentage(risk.foodReportRatio)],
+      ["Keluhan Siswa", formatPercentage(risk.complaintRatio)],
+      ["Tekanan Akibat Distribusi Pending", formatPercentage(risk.pendingRate)],
+    ]
+    
+    sections.push(`
+      <section>
+        <h2>${toRoman(sectionCounter++)}. ANALISIS RISIKO OPERASIONAL</h2>
+        <p class="section-desc">Berdasarkan data yang tercatat pada periode pelaporan, tingkat risiko operasional secara keseluruhan berada pada kategori <strong>${escapeHtml(risk.riskLabel)}</strong>, dengan rincian indikator sebagai berikut.</p>
+        <div class="risk-summary">
+          <div class="risk-box"><strong>${formatPercentage(risk.riskScore)}</strong><small>SKOR RISIKO</small></div>
+          <div class="risk-box"><strong>${formatPercentage(risk.securityScore)}</strong><small>INDEKS KEAMANAN</small></div>
+          <div class="risk-box border-none"><strong>${escapeHtml(risk.securityLabel)}</strong><small>STATUS KEAMANAN</small></div>
+        </div>
+        ${buildTable(["Komponen Risiko", "Persentase"], riskRows, "Tidak ada data risiko.")}
+        <p class="section-note">Catatan: Tingginya skor risiko pada periode ini terutama dipengaruhi oleh proporsi keluhan siswa yang relatif tinggi serta adanya distribusi yang masih berstatus tertunda. Disarankan adanya tindak lanjut prioritas terhadap kedua komponen tersebut.</p>
+      </section>
+    `)
+  }
+
+  if (selectedReports.includes("complaints")) {
+    const foodReportRows = data.foodReports
+      .slice(0, 30)
+      .map((report) => [
+        escapeHtml(formatDate(report.createdAt)),
+        escapeHtml(report.sekolahUsername ?? report.sekolahId),
+        escapeHtml(
+          report.kategori === "LAINNYA"
+            ? report.kategoriLainnya
+            : report.kategori
+        ),
+        escapeHtml(capitalize(report.status ?? "-")),
+        escapeHtml(report.deskripsi),
+      ])
+    const complaintRows = data.studentComplaints
+      .slice(0, 30)
+      .map((complaint) => [
+        escapeHtml(formatDate(complaint.waktuKejadian)),
+        escapeHtml(complaint.sekolahUsername ?? complaint.sekolahId),
+        escapeHtml(formatNumber(complaint.jumlahSiswa)),
+        escapeHtml(complaint.gejala),
+        escapeHtml(complaint.tindakan),
+      ])
+
+    const sectionNum = sectionCounter++;
+    sections.push(`
+      <section>
+        <h2>${toRoman(sectionNum)}. REKAPITULASI KELUHAN DAN LAPORAN SEKOLAH</h2>
+        <h3>${sectionNum}.1 Laporan Permasalahan Makanan</h3>
+        ${buildTable(["Tanggal", "Sekolah", "Kategori", "Status", "Deskripsi"], foodReportRows, "Belum ada laporan makanan.")}
+        <h3>${sectionNum}.2 Keluhan Siswa</h3>
+        ${buildTable(["Waktu", "Sekolah", "Jml. Siswa", "Gejala", "Tindakan"], complaintRows, "Belum ada keluhan siswa.")}
+        <p class="section-note">Catatan: Beberapa entri pada tabel keluhan siswa di atas teridentifikasi sebagai data pengujian sistem (dummy) dan disarankan untuk ditinjau ulang validitasnya sebelum dijadikan dasar pengambilan keputusan operasional.</p>
+      </section>
+    `)
+  }
+
+  // VI. KESIMPULAN
+  sections.push(`
+    <section>
+      <h2>${toRoman(sectionCounter++)}. KESIMPULAN</h2>
+      <div class="box-text">
+        <p>Secara umum, kegiatan produksi dan distribusi Program MBG pada periode ${escapeHtml(dateRangeLabel)} berjalan dengan volume yang cukup tinggi (${formatNumber(analytics.totalBatches)} batch dan ${formatNumber(analytics.totalDistributions)} distribusi), namun diiringi dengan tingkat risiko operasional yang tergolong ${escapeHtml(risk.riskLabel.toLowerCase())} akibat banyaknya keluhan siswa dan laporan permasalahan makanan yang belum tertangani. Diperlukan perhatian khusus dan tindak lanjut segera pada aspek keamanan pangan dan responsivitas penanganan keluhan agar kualitas layanan pada periode berikutnya dapat ditingkatkan.</p>
+      </div>
+    </section>
+  `)
+
+  return sections.join("")
 }
 
 function buildPdfTemplate(
@@ -421,77 +432,96 @@ function buildPdfTemplate(
   dateRangeLabel: string
 ) {
   const analytics = data.analytics ?? emptyAnalytics
-  const generatedAt = new Intl.DateTimeFormat("id-ID", {
-    dateStyle: "full",
-    timeStyle: "short",
-  }).format(new Date())
+  
+  const now = new Date();
+  const dateStr = new Intl.DateTimeFormat("id-ID", {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  }).format(now);
+  const timeStr = new Intl.DateTimeFormat("id-ID", {
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(now).replace(':', '.');
+  const generatedAt = `${dateStr}, pukul ${timeStr} WIB`;
 
   return `<!doctype html>
 <html lang="id">
 <head>
   <meta charset="utf-8" />
-  <title>Laporan MBG</title>
+  <title>Laporan Kerja ${escapeHtml(dateRangeLabel)}</title>
   <style>
-    @page { margin: 18mm; size: A4; }
+    @page { margin: 20mm; size: A4; }
     * { box-sizing: border-box; }
-    body { background: #ffffff; color: #172033; font-family: Inter, Arial, sans-serif; margin: 0; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-    .cover { border-bottom: 4px solid #0f766e; margin-bottom: 24px; padding-bottom: 22px; }
-    .brand { align-items: center; display: flex; gap: 12px; margin-bottom: 28px; }
-    .logo { align-items: center; background: #111827; border-radius: 12px; color: white; display: flex; font-weight: 800; height: 44px; justify-content: center; width: 44px; }
-    .brand small { color: #64748b; display: block; margin-top: 2px; }
-    h1 { font-size: 32px; letter-spacing: 0; margin: 0; }
-    h2 { font-size: 20px; margin: 0; }
-    h3 { color: #334155; font-size: 14px; margin: 18px 0 8px; }
-    .subtitle { color: #475569; line-height: 1.55; margin-top: 8px; max-width: 680px; }
-    .summary { display: grid; gap: 12px; grid-template-columns: repeat(4, 1fr); margin-top: 24px; }
-    .summary-card, .metric { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 14px; }
-    .summary-card small, .metric small { color: #64748b; display: block; font-size: 11px; margin-bottom: 8px; text-transform: uppercase; }
-    .summary-card strong, .metric strong { color: #0f172a; font-size: 22px; }
-    section { break-inside: avoid; margin-top: 22px; }
-    .section-title { align-items: end; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; margin-bottom: 10px; padding-bottom: 8px; }
-    .section-title span { color: #0f766e; font-size: 12px; font-weight: 700; text-transform: uppercase; }
-    table { border-collapse: collapse; font-size: 11px; width: 100%; }
-    th { background: #0f172a; color: white; padding: 9px 8px; text-align: left; }
-    td { border-bottom: 1px solid #e2e8f0; padding: 8px; vertical-align: top; }
-    tr:nth-child(even) td { background: #f8fafc; }
-    .empty { color: #64748b; padding: 18px; text-align: center; }
-    .pill { border-radius: 999px; display: inline-block; font-size: 10px; font-weight: 800; padding: 4px 8px; }
-    .success { background: #dcfce7; color: #166534; }
-    .warning { background: #fef3c7; color: #92400e; }
-    .danger { background: #ffe4e6; color: #be123c; }
-    .metric-grid { display: grid; gap: 10px; grid-template-columns: repeat(4, 1fr); }
-    .bars { margin-top: 16px; }
-    .bars label { color: #334155; display: flex; font-size: 12px; font-weight: 700; justify-content: space-between; margin: 12px 0 6px; }
-    .bars div { background: #e2e8f0; border-radius: 999px; height: 9px; overflow: hidden; }
-    .bars i { background: linear-gradient(90deg, #0f766e, #f59e0b); display: block; height: 100%; }
-    footer { border-top: 1px solid #e2e8f0; color: #64748b; font-size: 10px; margin-top: 28px; padding-top: 10px; }
+    body { background: #ffffff; color: #000000; font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; margin: 0; font-size: 11px; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .header-center { text-align: center; margin-bottom: 24px; }
+    .header-center h1 { font-size: 28px; font-weight: bold; margin: 0; letter-spacing: 1px; }
+    .header-center .sub { font-size: 10px; color: #666; letter-spacing: 1px; margin-top: 4px; margin-bottom: 16px; text-transform: uppercase; }
+    .header-center h2 { font-size: 14px; font-weight: bold; margin: 0; text-transform: uppercase; }
+    
+    .meta { margin-bottom: 16px; line-height: 1.8; font-size: 11px; }
+    .meta strong { display: inline-block; width: 140px; }
+    
+    .summary-boxes { display: flex; border: 1px solid #000; margin-bottom: 32px; }
+    .summary-box { flex: 1; text-align: center; padding: 12px 8px; border-right: 1px solid #000; }
+    .summary-box:last-child { border-right: none; }
+    .summary-box strong { display: block; font-size: 20px; margin-bottom: 4px; font-weight: bold; }
+    .summary-box small { display: block; font-size: 10px; text-transform: uppercase; }
+    
+    h2 { font-size: 12px; font-weight: bold; margin: 24px 0 8px; text-transform: uppercase; }
+    h3 { font-size: 11px; font-weight: bold; margin: 16px 0 6px; }
+    
+    .box-text { border: 1px solid #000; padding: 12px; margin-bottom: 16px; }
+    .box-text p { margin: 0; line-height: 1.5; text-align: justify; }
+    
+    .section-desc { margin-bottom: 8px; line-height: 1.5; text-align: justify; }
+    .section-note { margin-top: 6px; font-size: 10px; color: #555; text-align: justify; line-height: 1.4; }
+    
+    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px; }
+    th, td { border: 1px solid #000; padding: 6px 8px; text-align: left; vertical-align: top; }
+    th { font-weight: bold; }
+    
+    .risk-summary { display: flex; border: 1px solid #000; margin-bottom: 12px; }
+    .risk-box { flex: 1; text-align: center; padding: 12px 8px; border-right: 1px solid #000; }
+    .border-none { border-right: none; }
+    .risk-box strong { display: block; font-size: 18px; margin-bottom: 4px; font-weight: bold; }
+    .risk-box small { display: block; font-size: 10px; text-transform: uppercase; }
+    
+    footer { margin-top: 40px; border-top: 1px solid #ccc; padding-top: 12px; font-size: 10px; color: #555; text-align: justify; line-height: 1.4; }
+    
     @media print { .no-print { display: none; } }
   </style>
 </head>
 <body>
-  <div class="cover">
-    <div class="brand">
-      <div class="logo">MB</div>
-      <div>
-        <strong>MBG App</strong>
-        <small>Laporan operasional sekolah dan SPPG</small>
-      </div>
-    </div>
-    <h1>Laporan MBG</h1>
-    <p class="subtitle">Dokumen ini dirancang untuk rekap produksi, distribusi, risiko, dan keluhan pada periode ${escapeHtml(dateRangeLabel)}. Dibuat otomatis dari data terbaru aplikasi pada ${escapeHtml(generatedAt)}.</p>
-    <div class="summary">
-      <div class="summary-card"><small>Batch</small><strong>${formatNumber(analytics.totalBatches)}</strong></div>
-      <div class="summary-card"><small>Distribusi</small><strong>${formatNumber(analytics.totalDistributions)}</strong></div>
-      <div class="summary-card"><small>Laporan</small><strong>${formatNumber(analytics.totalFoodReports)}</strong></div>
-      <div class="summary-card"><small>Keluhan</small><strong>${formatNumber(analytics.totalStudentComplaints)}</strong></div>
-    </div>
+  <div class="header-center">
+    <h1>MBG.App</h1>
+    <div class="sub">Sistem Informasi Manajemen MBG</div>
+    <h2>Laporan Kerja Bulanan</h2>
   </div>
-  ${buildReportSections(selectedReports, data)}
-  <footer>MBG App - laporan dibuat otomatis. Gunakan dialog cetak browser untuk menyimpan sebagai PDF.</footer>
+  
+  <div class="meta">
+    <div><strong>Jenis Laporan:</strong> Laporan Operasional Otomatis Sistem MBG App</div>
+    <div><strong>Departemen / Unit:</strong> Operasional Produksi &amp; Distribusi MBG</div>
+    <div><strong>Periode Laporan:</strong> ${escapeHtml(dateRangeLabel)}</div>
+    <div><strong>Tanggal Dibuat:</strong> ${escapeHtml(generatedAt)}</div>
+  </div>
+  
+  <div class="summary-boxes">
+    <div class="summary-box"><strong>${formatNumber(analytics.totalBatches)}</strong><small>BATCH</small></div>
+    <div class="summary-box"><strong>${formatNumber(analytics.totalDistributions)}</strong><small>DISTRIBUSI</small></div>
+    <div class="summary-box"><strong>${formatNumber(analytics.totalFoodReports)}</strong><small>LAPORAN</small></div>
+    <div class="summary-box"><strong>${formatNumber(analytics.totalStudentComplaints)}</strong><small>KELUHAN</small></div>
+  </div>
+  
+  ${buildReportSections(selectedReports, data, dateRangeLabel)}
+  
+  <footer>
+    Dokumen ini dihasilkan secara otomatis oleh sistem MBG App berdasarkan data pada basis data operasional per ${escapeHtml(generatedAt)}. Laporan ini bersifat rekapitulatif dan ditujukan untuk mendukung proses pemantauan serta pengambilan keputusan internal terkait pelaksanaan Program Makan Bergizi Gratis (MBG).
+  </footer>
 </body>
 </html>`
 }
-
 export function ExportPdfPage() {
   const defaultDateRange = useMemo(() => getDefaultDateRange(), [])
   const cachedAnalytics = getCachedPageData<DashboardAnalytics>(

@@ -139,6 +139,8 @@ const symptomCatalog = [
       "begah",
       "puyeng",
       "mumet",
+      "pusing",
+      "sakit kepala",
     ],
   },
   {

@@ -4,6 +4,7 @@ import {
   AlertTriangleIcon,
   BrainCircuitIcon,
   ChefHatIcon,
+  ChevronDownIcon,
   ClockIcon,
   PackageSearchIcon,
   RefreshCwIcon,
@@ -78,34 +79,39 @@ export function ComplaintPatternsAiPage() {
   const [period, setPeriod] = useState<ComplaintAnalysisPeriod>("7d")
   const [isLoading, setIsLoading] = useState(!cachedInitialAnalysis)
   const [error, setError] = useState<string | null>(null)
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false)
+  const [isPatternsMinimized, setIsPatternsMinimized] = useState(false)
 
-  const loadData = useCallback(async (force = false) => {
-    const cacheKey = getComplaintAnalysisCacheKey(period)
-    const cachedAnalysis = getCachedPageData<ComplaintAnalysis>(cacheKey)
+  const loadData = useCallback(
+    async (force = false) => {
+      const cacheKey = getComplaintAnalysisCacheKey(period)
+      const cachedAnalysis = getCachedPageData<ComplaintAnalysis>(cacheKey)
 
-    if (!force && cachedAnalysis) {
-      setAnalysis(cachedAnalysis)
-      setIsLoading(false)
+      if (!force && cachedAnalysis) {
+        setAnalysis(cachedAnalysis)
+        setIsLoading(false)
+        setError(null)
+        return
+      }
+
+      setIsLoading(true)
       setError(null)
-      return
-    }
 
-    setIsLoading(true)
-    setError(null)
-
-    try {
-      const response = await api.studentComplaints.analysis(period)
-      setAnalysis(setCachedPageData(cacheKey, response.data))
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Gagal memuat analisis keluhan siswa."
-      )
-    } finally {
-      setIsLoading(false)
-    }
-  }, [period])
+      try {
+        const response = await api.studentComplaints.analysis(period)
+        setAnalysis(setCachedPageData(cacheKey, response.data))
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Gagal memuat analisis keluhan siswa."
+        )
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [period]
+  )
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -121,8 +127,10 @@ export function ComplaintPatternsAiPage() {
   const trendStatus = analysis?.trend.status ?? null
 
   function getTrendClass(status: ComplaintTrendStatus | null) {
-    if (status === "Akselerasi Tinggi") return "bg-red-50 text-red-600 border-red-200"
-    if (status === "Meningkat") return "bg-amber-50 text-amber-700 border-amber-200"
+    if (status === "Akselerasi Tinggi")
+      return "bg-red-50 text-red-600 border-red-200"
+    if (status === "Meningkat")
+      return "bg-amber-50 text-amber-700 border-amber-200"
     return "bg-emerald-50 text-emerald-700 border-emerald-200"
   }
 
@@ -174,7 +182,8 @@ export function ComplaintPatternsAiPage() {
                     Deteksi Pola Keluhan Siswa (AI)
                   </CardTitle>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Analisis pola gejala, sekolah terdampak, dan rekomendasi tindak lanjut dari data keluhan siswa.
+                    Analisis pola gejala, sekolah terdampak, dan rekomendasi
+                    tindak lanjut dari data keluhan siswa.
                   </p>
                 </div>
               </div>
@@ -236,7 +245,11 @@ export function ComplaintPatternsAiPage() {
                         <div className="flex flex-col gap-1">
                           <span
                             className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                              isLoading ? "bg-[#f8fafc] text-muted-foreground border-[#edf0f4]" : getTrendClass(item.badge as ComplaintTrendStatus)
+                              isLoading
+                                ? "border-[#edf0f4] bg-[#f8fafc] text-muted-foreground"
+                                : getTrendClass(
+                                    item.badge as ComplaintTrendStatus
+                                  )
                             }`}
                           >
                             {isLoading ? "..." : item.value}
@@ -248,7 +261,9 @@ export function ComplaintPatternsAiPage() {
                         </p>
                       )}
                       <span className="pb-0.5 text-[11px] font-medium text-muted-foreground">
-                        {periodOptions.find(p => p.value === period)?.label ?? period} terakhir
+                        {periodOptions.find((p) => p.value === period)?.label ??
+                          period}{" "}
+                        terakhir
                       </span>
                     </div>
                   </div>
@@ -264,29 +279,43 @@ export function ComplaintPatternsAiPage() {
           </div>
         ) : null}
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <section className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.04)]">
-            <div className="border-b border-[#edf0f4] px-6 py-5">
+        <section className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-col gap-3 border-b border-[#edf0f4] px-6 py-5 md:flex-row md:items-center md:justify-between">
+            <div>
               <h2 className="text-lg font-semibold">Kesimpulan AI</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Ringkasan pola tertinggi dan evaluasi yang perlu dilakukan.
+                Ringkasan prioritas dari pola keluhan tertinggi.
               </p>
             </div>
-            <div className="space-y-4 p-6">
-              {isLoading ? (
-                <div className="rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-4 text-sm text-muted-foreground">
-                  Memuat analisis keluhan siswa...
-                </div>
-              ) : null}
+            {topPattern ? (
+              <div className="flex flex-wrap gap-2">
+                <span
+                  className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getCategoryClass(topPattern.category)}`}
+                >
+                  Kategori {topPattern.category}
+                </span>
+                <span className="rounded-full border border-[#edf0f4] bg-[#f8fafc] px-2.5 py-1 text-xs font-semibold">
+                  Confidence {formatPercent(topPattern.confidence)}
+                </span>
+              </div>
+            ) : null}
+          </div>
+          <div className="space-y-4 p-5">
+            {isLoading ? (
+              <div className="rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-4 text-sm text-muted-foreground">
+                Memuat analisis keluhan siswa...
+              </div>
+            ) : null}
 
-              {!isLoading && !patterns.length ? (
-                <div className="rounded-xl border border-dashed border-[#d8deea] p-6 text-center text-sm text-muted-foreground">
-                  Belum ada data keluhan siswa pada periode ini.
-                </div>
-              ) : null}
+            {!isLoading && !patterns.length ? (
+              <div className="rounded-xl border border-dashed border-[#d8deea] p-6 text-center text-sm text-muted-foreground">
+                Belum ada data keluhan siswa pada periode ini.
+              </div>
+            ) : null}
 
-              {!isLoading && topPattern ? (
-                <>
+            {!isLoading && topPattern ? (
+              <div className="space-y-4">
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_17rem]">
                   <div className="rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-4">
                     <div className="flex items-start gap-3">
                       <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#eef2ff] text-[#0528f2]">
@@ -299,8 +328,8 @@ export function ComplaintPatternsAiPage() {
                         <p className="mt-1 text-sm leading-6 text-muted-foreground">
                           Pola teratas adalah {topPattern.symptom.toLowerCase()}{" "}
                           dengan{" "}
-                          {topPattern.totalStudents.toLocaleString("id-ID")} siswa
-                          terdampak dari{" "}
+                          {topPattern.totalStudents.toLocaleString("id-ID")}{" "}
+                          siswa terdampak dari{" "}
                           {topPattern.schools.length.toLocaleString("id-ID")}{" "}
                           sekolah. Confidence{" "}
                           {formatPercent(topPattern.confidence)}.
@@ -309,60 +338,132 @@ export function ComplaintPatternsAiPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-[#edf0f4] bg-white p-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getCategoryClass(topPattern.category)}`}
-                      >
-                        Kategori {topPattern.category}
-                      </span>
-                      <span className="rounded-full border border-[#edf0f4] bg-[#f8fafc] px-2.5 py-1 text-xs font-semibold">
-                        Confidence {formatPercent(topPattern.confidence)}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        Update terakhir {formatDateTime(topPattern.latestDate)}
-                      </span>
+                  <div className="grid gap-2 rounded-xl border border-[#edf0f4] bg-white p-4 sm:grid-cols-3 lg:grid-cols-1">
+                    <div>
+                      <p className="text-xs text-muted-foreground">
+                        Gejala utama
+                      </p>
+                      <p className="mt-1 line-clamp-1 text-sm font-semibold">
+                        {topPattern.symptom}
+                      </p>
                     </div>
-                    <p className="mt-4 text-sm font-semibold">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Siswa</p>
+                      <p className="mt-1 text-sm font-semibold">
+                        {topPattern.totalStudents.toLocaleString("id-ID")}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Update</p>
+                      <p className="mt-1 text-sm font-semibold">
+                        {formatDateTime(topPattern.latestDate)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3 rounded-xl border border-[#edf0f4] bg-white p-4 md:flex-row md:items-center md:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">
                       Rekomendasi tindak lanjut
                     </p>
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">
                       {topPattern.action}
                     </p>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 rounded-lg border-[#dfe5ef]"
+                    onClick={() =>
+                      setIsSummaryExpanded((expanded) => !expanded)
+                    }
+                  >
+                    {isSummaryExpanded ? "Ringkas" : "Lihat detail"}
+                    <ChevronDownIcon
+                      className={
+                        isSummaryExpanded
+                          ? "ml-1 size-4 rotate-180 transition-transform"
+                          : "ml-1 size-4 transition-transform"
+                      }
+                    />
+                  </Button>
+                </div>
 
-                  {analysis?.summary.evaluationFocus.length ? (
-                    <div className="rounded-xl border border-[#edf0f4] bg-white p-4">
-                      <div className="flex items-center gap-2">
-                        <AlertTriangleIcon className="size-4 text-[#0528f2]" />
-                        <p className="text-sm font-semibold">
-                          Yang harus dievaluasi SPPG
-                        </p>
-                      </div>
-                      <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm leading-6 text-muted-foreground">
-                        {analysis.summary.evaluationFocus.map((focus) => (
-                          <li key={focus}>{focus}</li>
-                        ))}
-                      </ul>
+                {isSummaryExpanded ? (
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <div className="rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-4">
+                      <p className="text-sm font-semibold">
+                        Rekomendasi lengkap
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                        {topPattern.action}
+                      </p>
                     </div>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.04)]">
-            <div className="flex flex-col gap-2 border-b border-[#edf0f4] px-6 py-5 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">Pola Terdeteksi</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Diurutkan dari pola dengan risiko dan dampak tertinggi.
-                </p>
+                    {analysis?.summary.evaluationFocus.length ? (
+                      <div className="rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-4">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangleIcon className="size-4 text-[#0528f2]" />
+                          <p className="text-sm font-semibold">
+                            Yang harus dievaluasi SPPG
+                          </p>
+                        </div>
+                        <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm leading-6 text-muted-foreground">
+                          {analysis.summary.evaluationFocus.map((focus) => (
+                            <li key={focus}>{focus}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-col gap-3 border-b border-[#edf0f4] px-6 py-5 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Pola Terdeteksi</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Diurutkan dari pola dengan risiko dan dampak tertinggi.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
               <span className="w-fit rounded-full border border-[#edf0f4] bg-[#f8fafc] px-3 py-1.5 text-sm font-semibold">
                 {patterns.length.toLocaleString("id-ID")} pola
               </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-lg border-[#dfe5ef]"
+                onClick={() =>
+                  setIsPatternsMinimized((minimized) => !minimized)
+                }
+              >
+                {isPatternsMinimized ? "Lihat Detail" : "Kecilkan"}
+                <ChevronDownIcon
+                  className={
+                    isPatternsMinimized
+                      ? "ml-1 size-4 transition-transform"
+                      : "ml-1 size-4 rotate-180 transition-transform"
+                  }
+                />
+              </Button>
             </div>
+          </div>
+          {isPatternsMinimized ? (
+            <div className="p-5">
+              <div className="rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-4 text-sm text-muted-foreground">
+                {" "}
+                {patterns.length.toLocaleString("id-ID")} pola tetap tersedia
+                untuk ditampilkan kembali.
+              </div>
+            </div>
+          ) : (
             <div className="p-6">
               <div className="space-y-3">
                 {patterns.map((pattern) => (
@@ -458,7 +559,9 @@ export function ComplaintPatternsAiPage() {
                               <span>
                                 {" "}
                                 - kirim{" "}
-                                {formatDateTime(batch.distributions[0].waktuKirim)}{" "}
+                                {formatDateTime(
+                                  batch.distributions[0].waktuKirim
+                                )}{" "}
                                 ({batch.distributions[0].status})
                               </span>
                             ) : null}
@@ -477,8 +580,8 @@ export function ComplaintPatternsAiPage() {
                 ))}
               </div>
             </div>
-          </section>
-        </div>
+          )}
+        </section>
 
         {!isLoading && analysis?.batchAnomalies.length ? (
           <section className="rounded-xl border border-red-100 bg-white shadow-[0_16px_42px_rgba(15,23,42,0.04)]">
@@ -487,9 +590,12 @@ export function ComplaintPatternsAiPage() {
                 <PackageSearchIcon className="size-5" />
               </span>
               <div>
-                <h2 className="text-lg font-semibold">Anomali Batch Terdeteksi</h2>
+                <h2 className="text-lg font-semibold">
+                  Anomali Batch Terdeteksi
+                </h2>
                 <p className="mt-0.5 text-sm text-muted-foreground">
-                  Batch berikut terhubung dengan keluhan dari 3 sekolah atau lebih.
+                  Batch berikut terhubung dengan keluhan dari 3 sekolah atau
+                  lebih.
                 </p>
               </div>
             </div>
@@ -500,7 +606,9 @@ export function ComplaintPatternsAiPage() {
                   className="rounded-xl border border-red-100 bg-red-50/50 p-4"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <span className="text-sm font-bold text-red-700">{anomaly.batchId}</span>
+                    <span className="text-sm font-bold text-red-700">
+                      {anomaly.batchId}
+                    </span>
                     <span className="shrink-0 rounded-full border border-red-200 bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
                       Anomali Batch
                     </span>

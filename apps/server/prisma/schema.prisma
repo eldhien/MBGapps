@@ -8,19 +8,397 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+model User {
+  id             String          @id(map: "user_profiles_pkey") @default(uuid()) @db.Uuid
+  username       String          @unique(map: "user_profiles_username_key")
+  passwordHash   String          @map("password_hash")
+  role           UserRole        @default(SPPG)
+  schoolId       String?         @unique @map("school_id") @db.Uuid
+  school         School?         @relation("SchoolAccount", fields: [schoolId], references: [id])
+  managedSchools School[]        @relation("SppgSchools")
+  drivers        Driver[]        @relation("SppgDrivers")
+  petugasBatches BatchProduksi[] @relation("PetugasBatch")
+  sekolahBatches BatchSekolah[]  @relation("SekolahBatch")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
 enum UserRole {
   SUPER_ADMIN
   SPPG
   SEKOLAH
+  DRIVER
 }
 
-model User {
-  id           String   @id @default(uuid()) @db.Uuid
-  username     String   @unique
-  passwordHash String   @map("password_hash")
-  role         UserRole @default(SPPG)
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+model School {
+  id                   String                    @id @default(uuid()) @db.Uuid
+  name                 String
+  npsn                 String?
+  address              String?                   @db.Text
+  sppgId               String                    @map("sppg_id") @db.Uuid
+  sppg                 User                      @relation("SppgSchools", fields: [sppgId], references: [id])
+  account              User?                     @relation("SchoolAccount")
+  progress             SchoolProgress?
+  distributionReceipts BatchDistributionSchool[]
+  createdAt            DateTime                  @default(now()) @map("created_at")
+  updatedAt            DateTime                  @updatedAt @map("updated_at")
 
-  @@map("users")
+  @@index([sppgId])
+  @@map("schools")
+}
+
+enum SchoolProgressStatus {
+  BELUM_ADA
+  MENUNGGU_PRODUKSI
+  DIPRODUKSI
+  SIAP_DIKIRIM
+  DIKIRIM
+  DITERIMA
+  BERMASALAH
+}
+
+model SchoolProgress {
+  id        String               @id @default(uuid()) @db.Uuid
+  schoolId  String               @unique @map("school_id") @db.Uuid
+  school    School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  status    SchoolProgressStatus @default(BELUM_ADA)
+  notes     String?              @db.Text
+  updatedAt DateTime             @updatedAt @map("updated_at")
+  createdAt DateTime             @default(now()) @map("created_at")
+
+  @@map("school_progress")
+}
+
+model DapurDailyCapacity {
+  id        String   @id @default(uuid()) @db.Uuid
+  date      DateTime @unique @db.Date
+  capacity  Int
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("dapur_daily_capacities")
+}
+
+enum MenuCategory {
+  MENU_UTAMA
+  LAUK
+  SAYUR
+  BUAH
+  SUSU_SNACK
+}
+
+enum BatchStatus {
+  DRAFT
+  DIPRODUKSI
+  SIAP_KIRIM
+  TERKIRIM
+  DITERIMA
+  DITOLAK
+}
+
+enum FotoType {
+  PROSES_MASAK
+  MAKANAN_JADI
+}
+
+model MenuMaster {
+  id        String          @id @default(uuid()) @db.Uuid
+  name      String
+  category  MenuCategory
+  batches   BatchProduksi[]
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  @@map("menu_masters")
+}
+
+model Driver {
+  id            String          @id @default(uuid()) @db.Uuid
+  name          String
+  phone         String?
+  vehicleNumber String?         @map("vehicle_number")
+  isActive      Boolean         @default(true) @map("is_active")
+  sppgId        String?         @map("sppg_id") @db.Uuid
+  sppg          User?           @relation("SppgDrivers", fields: [sppgId], references: [id])
+  batches       BatchProduksi[] @relation("DriverBatch")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  @@index([sppgId])
+  @@map("drivers")
+}
+
+model BatchProduksi {
+  id               String              @id // format: MBG-DD/MM/YYYY-XXX
+  menuId           String              @db.Uuid
+  menu             MenuMaster          @relation(fields: [menuId], references: [id])
+  totalPorsi       Int
+  waktuMulai       DateTime?
+  waktuSelesai     DateTime?
+  petugasId        String?             @db.Uuid
+  petugas          User?               @relation("PetugasBatch", fields: [petugasId], references: [id])
+  driverId         String?             @db.Uuid
+  driver           Driver?             @relation("DriverBatch", fields: [driverId], references: [id])
+  noKendaraan      String?
+  ruteDistribusi   String?
+  jamKeberangkatan DateTime?
+  status           BatchStatus         @default(DRAFT)
+  catatanKualitas  String?             @db.Text
+  isApproved       Boolean             @default(false)
+  sekolah          BatchSekolah[]
+  varian           BatchVarian[]
+  foto             BatchFoto[]
+  distributions    BatchDistribution[]
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
+
+  @@map("batch_produksi")
+}
+
+model BatchSekolah {
+  id        String        @id @default(uuid()) @db.Uuid
+  batchId   String
+  batch     BatchProduksi @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  sekolahId String?       @db.Uuid
+  sekolah   User?         @relation("SekolahBatch", fields: [sekolahId], references: [id])
+  porsi     Int
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@map("batch_sekolah")
+}
+
+model BatchVarian {
+  id          String        @id @default(uuid()) @db.Uuid
+  batchId     String
+  batch       BatchProduksi @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  namaVarian  String
+  jumlahPorsi Int
+
+  energi      Float?
+  protein     Float?
+  lemak       Float?
+  karbohidrat Float?
+  serat       Float?
+
+  bahan BatchBahan[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("batch_varian")
+}
+
+enum KategoriKomposisi {
+  MAKANAN_POKOK
+  LAUK_PAUK
+  SAYUR
+  BUAH
+  SUSU
+}
+
+model BatchBahan {
+  id        String             @id @default(uuid()) @db.Uuid
+  varianId  String             @db.Uuid
+  varian    BatchVarian        @relation(fields: [varianId], references: [id], onDelete: Cascade)
+  kategori  KategoriKomposisi?
+  namaBahan String
+  jumlah    Float
+  satuan    String
+  harga     Float?
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+
+  @@map("batch_bahan")
+}
+
+model BatchFoto {
+  id        String        @id @default(uuid()) @db.Uuid
+  batchId   String
+  batch     BatchProduksi @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  jenis     FotoType
+  url       String
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@map("batch_foto")
+}
+
+enum BatchDistributionStatus {
+  DRAFT
+  DIKIRIM
+  SELESAI
+  BERMASALAH
+  DITOLAK
+}
+
+enum BatchDistributionSchoolStatus {
+  MENUNGGU
+  DITERIMA
+  DITOLAK
+}
+
+model BatchDistribution {
+  id         String                    @id @default(uuid()) @db.Uuid
+  batchId    String                    @map("batch_id")
+  batch      BatchProduksi             @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  waktuKirim DateTime?                 @map("waktu_kirim")
+  status     BatchDistributionStatus   @default(DIKIRIM)
+  fotoDikemasUrl String?               @map("foto_dikemas_url") @db.Text
+  schools    BatchDistributionSchool[]
+  createdAt  DateTime                  @default(now()) @map("created_at")
+  updatedAt  DateTime                  @updatedAt @map("updated_at")
+
+  @@index([batchId])
+  @@map("batch_distributions")
+}
+
+model BatchDistributionSchool {
+  id             String                        @id @default(uuid()) @db.Uuid
+  distributionId String                        @map("distribution_id") @db.Uuid
+  distribution   BatchDistribution             @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  schoolId       String                        @map("school_id") @db.Uuid
+  school         School                        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  jumlahPorsi    Int                           @map("jumlah_porsi")
+  status         BatchDistributionSchoolStatus @default(MENUNGGU)
+  receivedAt     DateTime?                     @map("received_at")
+  rejectedReason String?                       @map("rejected_reason") @db.Text
+  buktiTerimaFotoUrl String?                   @map("bukti_terima_foto_url") @db.Text
+  createdAt      DateTime                      @default(now()) @map("created_at")
+  updatedAt      DateTime                      @updatedAt @map("updated_at")
+
+  @@unique([distributionId, schoolId])
+  @@index([schoolId])
+  @@map("batch_distribution_schools")
+}
+
+enum LegacyBatchStatus {
+  DRAFT
+  SCHEDULED
+  IN_PRODUCTION
+  DISTRIBUTED
+  CANCELLED
+}
+
+enum DistributionStatus {
+  PENDING
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+}
+
+enum FoodReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+}
+
+enum ReportCategory {
+  BASI
+  RUSAK
+  TERLAMBAT
+  SUHU_TIDAK_SESUAI
+  LAINNYA
+}
+
+enum ReceivingStatus {
+  PENDING
+  COMPLETED
+  REJECTED
+}
+
+model KitchenChecklist {
+  id              String   @id @default(uuid())
+  apdPhoto        String   @map("apd_photo")
+  alatPhoto       String   @map("alat_photo")
+  kebersihanPhoto String   @map("kebersihan_photo")
+  kondisiDapur    String   @map("kondisi_dapur")
+  timestamp       DateTime
+  sppgId          String?  @map("sppg_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@index([timestamp], map: "kitchen_checklists_timestamp_idx")
+  @@index([sppgId])
+  @@map("kitchen_checklists")
+}
+
+model Batch {
+  id            String            @id @default(uuid())
+  batchIdUnik   String            @unique @map("batch_id_unik")
+  namaMenu      String
+  jumlahPorsi   Int
+  komposisi     String
+  waktuProduksi DateTime          @map("waktu_produksi")
+  driverId      String?
+  photoUrl      String?
+  status        LegacyBatchStatus @default(DRAFT)
+  sppgId        String?
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+
+  distributions Distribution[]
+
+  @@map("batches")
+}
+
+model Distribution {
+  id          String             @id @default(uuid())
+  batchId     String
+  sekolahId   String
+  waktuKirim  DateTime?          @map("waktu_kirim")
+  jumlahPorsi Int
+  status      DistributionStatus @default(PENDING)
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
+
+  batch Batch @relation(fields: [batchId], references: [id])
+
+  receivingReceipt ReceivingReceipt?
+
+  @@map("distributions")
+}
+
+model FoodReport {
+  id              String           @id @default(uuid())
+  kategori        ReportCategory
+  kategoriLainnya String?          @map("kategori_lainnya")
+  deskripsi       String
+  sekolahId       String
+  batchId         String?
+  status          FoodReportStatus @default(PENDING)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  @@map("food_reports")
+}
+
+model StudentComplaint {
+  id            String   @id @default(uuid())
+  jumlahSiswa   Int
+  gejala        String
+  waktuKejadian DateTime @map("waktu_kejadian")
+  tindakan      String
+  sekolahId     String
+  batchId       String?
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("student_complaints")
+}
+
+model ReceivingReceipt {
+  id             String          @id @default(uuid())
+  distributionId String          @unique
+  status         ReceivingStatus @default(PENDING)
+  catatan        String?
+  timestamp      DateTime?
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  distribution Distribution @relation(fields: [distributionId], references: [id])
+
+  @@map("receiving_receipts")
 }

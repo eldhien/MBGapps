@@ -2,27 +2,29 @@ import type React from "react"
 import type { UserRole } from "@/features/auth/types"
 import {
   ClipboardCheckIcon,
+  BrainCircuitIcon,
+  DownloadIcon,
   FileTextIcon,
   HistoryIcon,
   LayoutDashboardIcon,
   PackagePlusIcon,
-  QrCodeIcon,
   SchoolIcon,
   Settings2Icon,
   ShieldCheckIcon,
   TruckIcon,
+  UploadIcon,
   UsersIcon,
 } from "lucide-react"
 
 export type AppPageKey =
   | "dashboard"
   | "users"
+  | "schoolAccounts"
   | "batch"
   | "kitchenChecklist"
   | "distribution"
   | "masterData"
   | "reports"
-  | "scanQr"
   | "receivingValidation"
   | "foodReports"
   | "studentComplaints"
@@ -35,6 +37,11 @@ export type NavigationPage = {
   allowedRoles: UserRole[]
   icon: React.ReactNode
   features: string[]
+  children?: {
+    title: string
+    path: string
+    icon?: React.ReactNode
+  }[]
 }
 
 const allRoles: UserRole[] = ["SUPER_ADMIN", "SPPG", "SEKOLAH"]
@@ -58,7 +65,9 @@ export const navigationPages: NavigationPage[] = [
     path: "/users",
     allowedRoles: ["SUPER_ADMIN"],
     icon: <UsersIcon />,
-    features: ["Manajemen pengguna multi-role: Super Admin, SPPG, dan Sekolah."],
+    features: [
+      "Manajemen pengguna multi-role: Super Admin, SPPG, dan Sekolah.",
+    ],
   },
   {
     key: "batch",
@@ -69,18 +78,41 @@ export const navigationPages: NavigationPage[] = [
     features: [
       "Pembuatan batch makanan: nama menu, jumlah porsi, komposisi makanan, waktu produksi, petugas driver, foto.",
       "Sistem Batch ID unik untuk setiap produksi makanan.",
-      "Generate QR Code untuk setiap batch makanan.",
+    ],
+    children: [
+      {
+        title: "Tambahkan Batch",
+        path: "/batch/create",
+        icon: <UploadIcon />,
+      },
+      {
+        title: "Riwayat Batch Makanan",
+        path: "/batch",
+        icon: <HistoryIcon />,
+      },
     ],
   },
   {
     key: "kitchenChecklist",
-    title: "Checklist Kebersihan",
-    path: "/kitchen-checklist",
+    title: "Laporan Kebersihan",
+    path: "/cleanliness-reports",
     allowedRoles: sppgRoles,
     icon: <ClipboardCheckIcon />,
     features: [
-      "Checklist kebersihan dapur digital.",
-      "Upload foto seminggu sekali: APD, alat, kebersihan, timestamp, kondisi dapur.",
+      "Laporan kebersihan dapur digital.",
+      "Upload foto seminggu sekali: APD, alat, kebersihan, dan kondisi dapur.",
+    ],
+    children: [
+      {
+        title: "Upload Laporan",
+        path: "/cleanliness-reports/upload",
+        icon: <UploadIcon />,
+      },
+      {
+        title: "Riwayat Laporan",
+        path: "/cleanliness-reports/history",
+        icon: <HistoryIcon />,
+      },
     ],
   },
   {
@@ -92,6 +124,18 @@ export const navigationPages: NavigationPage[] = [
     features: [
       "Manajemen distribusi makanan: ID batch, ID sekolah, waktu kirim, jumlah porsi, status pengiriman.",
     ],
+    children: [
+      {
+        title: "Buat Distribusi",
+        path: "/distribution",
+        icon: <UploadIcon />,
+      },
+      {
+        title: "Riwayat Distribusi",
+        path: "/distribution/history",
+        icon: <HistoryIcon />,
+      },
+    ],
   },
   {
     key: "masterData",
@@ -99,10 +143,18 @@ export const navigationPages: NavigationPage[] = [
     path: "/master-data",
     allowedRoles: sppgRoles,
     icon: <Settings2Icon />,
-    features: [
-      "Data driver.",
-      "Laporan dari sekolah.",
-      "Riwayat batch makanan dan distribusi.",
+    features: ["Data driver.", "Data akun sekolah."],
+    children: [
+      {
+        title: "Akun Sekolah",
+        path: "/school-accounts",
+        icon: <SchoolIcon />,
+      },
+      {
+        title: "Driver",
+        path: "/master-data/drivers",
+        icon: <TruckIcon />,
+      },
     ],
   },
   {
@@ -116,16 +168,27 @@ export const navigationPages: NavigationPage[] = [
       "Export laporan PDF: produksi, distribusi, risiko, keluhan.",
       "Deteksi pola keluhan siswa lintas sekolah untuk evaluasi SPPG.",
     ],
-  },
-  {
-    key: "scanQr",
-    title: "Scan QR",
-    path: "/scan-qr",
-    allowedRoles: schoolRoles,
-    icon: <QrCodeIcon />,
-    features: [
-      "Scan QR Code melalui website sekolah.",
-      "Tampilan detail batch setelah scan: ID Batch, porsi makanan, petugas driver.",
+    children: [
+      {
+        title: "Riwayat Laporan Sekolah",
+        path: "/reports/school-reports",
+        icon: <FileTextIcon />,
+      },
+      {
+        title: "Riwayat Keluhan Siswa",
+        path: "/reports/student-complaints",
+        icon: <HistoryIcon />,
+      },
+      {
+        title: "Export Laporan PDF",
+        path: "/reports/export-pdf",
+        icon: <DownloadIcon />,
+      },
+      {
+        title: "Deteksi Pola Keluhan Siswa (AI)",
+        path: "/reports/complaint-patterns-ai",
+        icon: <BrainCircuitIcon />,
+      },
     ],
   },
   {
@@ -170,6 +233,28 @@ export const navigationPages: NavigationPage[] = [
       "Riwayat batch makanan dan distribusi.",
       "Riwayat laporan sekolah dan keluhan siswa.",
     ],
+    children: [
+      {
+        title: "Riwayat Batch Makanan",
+        path: "/history/batches",
+        icon: <FileTextIcon />,
+      },
+      {
+        title: "Riwayat Distribusi",
+        path: "/history/distributions",
+        icon: <HistoryIcon />,
+      },
+      {
+        title: "Riwayat Laporan Sekolah",
+        path: "/history/school-reports",
+        icon: <FileTextIcon />,
+      },
+      {
+        title: "Riwayat Keluhan Siswa",
+        path: "/history/student-complaints",
+        icon: <HistoryIcon />,
+      },
+    ],
   },
 ]
 
@@ -182,5 +267,8 @@ export function getVisibleNavigation(role?: UserRole | null) {
 }
 
 export function findNavigationPage(path: string) {
-  return navigationPages.find((page) => page.path === path)
+  return navigationPages.find(
+    (page) =>
+      page.path === path || page.children?.some((child) => child.path === path)
+  )
 }

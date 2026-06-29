@@ -1,0 +1,3 @@
+ALTER TYPE "public"."BatchStatus" ADD VALUE IF NOT EXISTS 'DITERIMA';
+ALTER TYPE "public"."BatchStatus" ADD VALUE IF NOT EXISTS 'DITOLAK';
+ALTER TYPE "public"."BatchDistributionStatus" ADD VALUE IF NOT EXISTS 'DITOLAK';

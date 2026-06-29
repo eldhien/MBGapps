@@ -12,7 +12,7 @@ importers:
         specifier: ^5.2.9
         version: 5.2.9
       '@tailwindcss/vite':
-        specifier: ^4
+        specifier: ^4.3.1
         version: 4.3.1(vite@8.0.16(@types/node@24.13.2)(jiti@2.7.0))
       class-variance-authority:
         specifier: ^0.7.1
@@ -42,7 +42,7 @@ importers:
         specifier: ^3.6.0
         version: 3.6.0
       tailwindcss:
-        specifier: ^4
+        specifier: ^4.3.1
         version: 4.3.1
       tw-animate-css:
         specifier: ^1.4.0

@@ -19,24 +19,41 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
+import { TablePagination } from "@/components/ui/table-pagination"
 import { useAuth } from "@/features/auth/AuthProvider"
 import { formatRole, type UserRole } from "@/features/auth/types"
 import { api, type ManagedUser } from "@/lib/api"
+import {
+  getCachedPageData,
+  pageCacheKeys,
+  setCachedPageData,
+} from "@/lib/page-cache"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 import {
   EyeIcon,
   EyeOffIcon,
+  MoreVerticalIcon,
   PencilIcon,
   PlusIcon,
+  SearchIcon,
+  SlidersHorizontalIcon,
   Trash2Icon,
   TriangleAlertIcon,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type FormEvent } from "react"
 import { Navigate } from "react-router-dom"
 
 const roles: UserRole[] = ["SUPER_ADMIN", "SPPG", "SEKOLAH"]
+const USERS_PER_PAGE = 10
+type RoleFilter = "ALL" | UserRole
 
 type FormState = {
   id?: string
@@ -51,24 +68,23 @@ const initialForm: FormState = {
   username: "",
 }
 
-let usersCache: ManagedUser[] | null = null
-
-function cacheUsers(users: ManagedUser[]) {
-  usersCache = users
-  return users
-}
-
 export function UsersPage() {
   const { profile } = useAuth()
+  const cachedUsers = getCachedPageData<ManagedUser[]>(pageCacheKeys.users)
   const [alertMessage, setAlertMessage] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<ManagedUser | null>(null)
   const [dialogError, setDialogError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState<FormState>(initialForm)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(!usersCache)
+  const [isLoading, setIsLoading] = useState(!cachedUsers)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isDeletingUser, setIsDeletingUser] = useState(false)
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
-  const [users, setUsers] = useState<ManagedUser[]>(() => usersCache ?? [])
+  const [currentPage, setCurrentPage] = useState(1)
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>("ALL")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [users, setUsers] = useState<ManagedUser[]>(() => cachedUsers ?? [])
 
   const isEditing = Boolean(form.id)
 
@@ -76,8 +92,35 @@ export function UsersPage() {
     () => [...users].sort((a, b) => a.username.localeCompare(b.username)),
     [users]
   )
+  const filteredUsers = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+
+    return sortedUsers.filter((user) => {
+      const matchesRole = roleFilter === "ALL" || user.role === roleFilter
+      const matchesSearch =
+        !query ||
+        user.username.toLowerCase().includes(query) ||
+        formatRole(user.role).toLowerCase().includes(query)
+
+      return matchesRole && matchesSearch
+    })
+  }, [roleFilter, searchQuery, sortedUsers])
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredUsers.length / USERS_PER_PAGE)
+  )
+  const paginatedUsers = useMemo(
+    () =>
+      filteredUsers.slice(
+        (currentPage - 1) * USERS_PER_PAGE,
+        currentPage * USERS_PER_PAGE
+      ),
+    [currentPage, filteredUsers]
+  )
 
   async function loadUsers() {
+    const usersCache = getCachedPageData<ManagedUser[]>(pageCacheKeys.users)
+
     if (usersCache) {
       setUsers(usersCache)
       setIsLoading(false)
@@ -89,7 +132,7 @@ export function UsersPage() {
 
     try {
       const response = await api.users.list()
-      setUsers(cacheUsers(response.users))
+      setUsers(setCachedPageData(pageCacheKeys.users, response.users))
     } catch (error) {
       setError(
         error instanceof Error ? error.message : "Gagal memuat pengguna."
@@ -104,6 +147,14 @@ export function UsersPage() {
       void loadUsers()
     }
   }, [profile?.role])
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages))
+  }, [totalPages])
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [roleFilter, searchQuery])
 
   if (profile?.role !== "SUPER_ADMIN") {
     return <Navigate to="/dashboard" replace />
@@ -128,11 +179,14 @@ export function UsersPage() {
     setIsDialogOpen(true)
   }
 
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (isSubmitting) return
+
     setAlertMessage(null)
     setDialogError(null)
     setError(null)
+    setIsSubmitting(true)
 
     try {
       if (isEditing && form.id) {
@@ -142,7 +196,8 @@ export function UsersPage() {
           ...(form.password ? { password: form.password } : {}),
         })
         setUsers((currentUsers) =>
-          cacheUsers(
+          setCachedPageData(
+            pageCacheKeys.users,
             currentUsers.map((user) =>
               user.id === response.user.id ? response.user : user
             )
@@ -155,7 +210,12 @@ export function UsersPage() {
           role: form.role,
           username: form.username,
         })
-        setUsers((currentUsers) => cacheUsers([...currentUsers, response.user]))
+        setUsers((currentUsers) =>
+          setCachedPageData(pageCacheKeys.users, [
+            ...currentUsers,
+            response.user,
+          ])
+        )
         setAlertMessage("Pengguna berhasil dibuat.")
       }
 
@@ -165,19 +225,25 @@ export function UsersPage() {
       setDialogError(
         error instanceof Error ? error.message : "Gagal menyimpan pengguna."
       )
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   async function onDelete() {
-    if (!deleteTarget) return
+    if (!deleteTarget || isDeletingUser) return
 
     setAlertMessage(null)
     setError(null)
+    setIsDeletingUser(true)
 
     try {
       await api.users.delete(deleteTarget.id)
       setUsers((currentUsers) =>
-        cacheUsers(currentUsers.filter((user) => user.id !== deleteTarget.id))
+        setCachedPageData(
+          pageCacheKeys.users,
+          currentUsers.filter((user) => user.id !== deleteTarget.id)
+        )
       )
       setDeleteTarget(null)
       setAlertMessage("Pengguna berhasil dihapus.")
@@ -185,6 +251,8 @@ export function UsersPage() {
       setError(
         error instanceof Error ? error.message : "Gagal menghapus pengguna."
       )
+    } finally {
+      setIsDeletingUser(false)
     }
   }
 
@@ -214,101 +282,178 @@ export function UsersPage() {
         />
       ) : null}
 
-      <section className="rounded-lg border bg-card text-card-foreground">
-        <div className="flex flex-col gap-3 border-b p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-lg font-semibold">Daftar pengguna</h1>
-            {isLoading ? (
-              <Skeleton className="mt-2 h-4 w-32" />
-            ) : (
-              <p className="mt-1 text-sm text-muted-foreground">
-                {sortedUsers.length} pengguna terdaftar
-              </p>
-            )}
+      <section className="pb-1">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Pengguna</h1>
+          <p className="max-w-2xl text-sm leading-6 text-muted-foreground">
+            Kelola akun pengguna, role, dan akses dashboard untuk operasional
+            MBG.
+          </p>
+        </div>
+      </section>
+
+      <section className="overflow-hidden rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.05)]">
+        <div className="flex flex-col gap-4 border-b border-[#edf0f4] p-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-1">
+            <h1 className="text-lg font-semibold tracking-tight">
+              Semua pengguna
+            </h1>
+            <span className="text-lg font-semibold text-muted-foreground">
+              {isLoading ? "..." : filteredUsers.length}
+            </span>
           </div>
-          <Button onClick={openCreateDialog}>
-            <PlusIcon />
-            Tambah pengguna
-          </Button>
+
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative">
+              <SearchIcon className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search"
+                className="h-10 w-full rounded-lg border-[#e3e7ef] bg-white pl-9 sm:w-64"
+              />
+            </div>
+            <div className="relative">
+              <SlidersHorizontalIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+              <select
+                value={roleFilter}
+                onChange={(event) =>
+                  setRoleFilter(event.target.value as RoleFilter)
+                }
+                className="h-10 rounded-lg border border-[#e3e7ef] bg-white pr-9 pl-9 text-sm font-medium transition-colors outline-none hover:border-[#cfd6e3] focus:border-[#0528f2] focus:ring-3 focus:ring-[#0528f2]/15"
+                aria-label="Filter role"
+              >
+                <option value="ALL">All roles</option>
+                {roles.map((role) => (
+                  <option key={role} value={role}>
+                    {formatRole(role)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button
+              onClick={openCreateDialog}
+              className="h-10 cursor-pointer rounded-lg bg-[#0528f2] px-4 text-white"
+            >
+              <PlusIcon />
+              Tambah pengguna
+            </Button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-210 text-sm">
             <thead>
-              <tr className="border-b text-left text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Username</th>
-                <th className="px-4 py-3 font-medium">Role</th>
-                <th className="px-4 py-3 font-medium">Dibuat</th>
-                <th className="px-4 py-3 text-right font-medium">Aksi</th>
+              <tr className="border-b border-[#edf0f4] bg-[#fcfcfd] text-left text-xs text-muted-foreground">
+                <th className="px-5 py-3 font-medium">Username</th>
+                <th className="px-5 py-3 font-medium">Role</th>
+                <th className="px-5 py-3 font-medium">Terakhir aktif</th>
+                <th className="px-5 py-3 font-medium">Tanggal dibuat</th>
+                <th className="w-12 px-5 py-3 text-right font-medium" />
               </tr>
             </thead>
             <tbody>
               {isLoading
-                ? Array.from({ length: 4 }).map((_, index) => (
-                    <tr key={index} className="border-b last:border-0">
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-36" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-24" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-20" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex justify-end gap-2">
-                          <Skeleton className="h-8 w-20" />
-                          <Skeleton className="h-8 w-20" />
+                ? Array.from({ length: 6 }).map((_, index) => (
+                    <tr key={index} className="border-b border-[#edf0f4]">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <Skeleton className="size-9 rounded-full" />
+                          <div className="space-y-2">
+                            <Skeleton className="h-4 w-36" />
+                          </div>
                         </div>
                       </td>
+                      <td className="px-5 py-4">
+                        <Skeleton className="h-6 w-40 rounded-full" />
+                      </td>
+                      <td className="px-5 py-4">
+                        <Skeleton className="h-4 w-20" />
+                      </td>
+                      <td className="px-5 py-4">
+                        <Skeleton className="h-4 w-20" />
+                      </td>
+                      <td className="px-5 py-4" />
                     </tr>
                   ))
                 : null}
-              {sortedUsers.map((user) => (
-                <tr key={user.id} className="border-b last:border-0">
-                  <td className="px-4 py-3 font-medium">{user.username}</td>
-                  <td className="px-4 py-3">{formatRole(user.role)}</td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {new Date(user.createdAt).toLocaleDateString("id-ID")}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openEditDialog(user)}
-                      >
-                        <PencilIcon />
-                        Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="destructive"
-                        size="sm"
-                        disabled={user.id === profile.id}
-                        onClick={() => setDeleteTarget(user)}
-                      >
-                        <Trash2Icon />
-                        Hapus
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {!isLoading && sortedUsers.length === 0 ? (
+              {!isLoading &&
+                paginatedUsers.map((user) => (
+                  <tr
+                    key={user.id}
+                    className="border-b border-[#edf0f4] last:border-0 hover:bg-[#fcfcfd]"
+                  >
+                    <td className="px-5 py-4">
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold">
+                          {user.username}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600 ring-1 ring-emerald-100">
+                        {formatRole(user.role)}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 text-muted-foreground">
+                      {new Date(user.createdAt).toLocaleDateString("id-ID")}
+                    </td>
+                    <td className="px-5 py-4 text-muted-foreground">
+                      {new Date(user.createdAt).toLocaleDateString("id-ID")}
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-muted-foreground hover:text-[#0528f2]"
+                          >
+                            <MoreVerticalIcon className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-32">
+                          <DropdownMenuItem
+                            onSelect={() => openEditDialog(user)}
+                          >
+                            <PencilIcon />
+                            Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            disabled={user.id === profile.id}
+                            onSelect={() => setDeleteTarget(user)}
+                          >
+                            <Trash2Icon />
+                            Hapus
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </td>
+                  </tr>
+                ))}
+              {!isLoading && filteredUsers.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={4}
-                    className="px-4 py-8 text-center text-muted-foreground"
+                    colSpan={5}
+                    className="px-5 py-10 text-center text-muted-foreground"
                   >
-                    Belum ada pengguna.
+                    Tidak ada pengguna yang cocok.
                   </td>
                 </tr>
               ) : null}
             </tbody>
           </table>
         </div>
+
+        {!isLoading && filteredUsers.length > USERS_PER_PAGE ? (
+          <TablePagination
+            page={currentPage}
+            totalPages={totalPages}
+            onPageChange={setCurrentPage}
+          />
+        ) : null}
       </section>
 
       <Dialog
@@ -322,14 +467,18 @@ export function UsersPage() {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {isEditing ? "Edit pengguna" : "Tambah pengguna"}
-            </DialogTitle>
-            <DialogDescription>
-              Role dan akses pengguna dikelola oleh Super Admin.
-            </DialogDescription>
+            <div className="flex items-center gap-3">
+              <div>
+                <DialogTitle className="text-lg font-semibold">
+                  {isEditing ? "Edit pengguna" : "Tambah pengguna"}
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-sm">
+                  Atur username, role akun, dan password pengguna.
+                </DialogDescription>
+              </div>
+            </div>
           </DialogHeader>
 
           <form onSubmit={onSubmit} className="grid gap-4">
@@ -343,13 +492,14 @@ export function UsersPage() {
                     username: event.target.value,
                   }))
                 }
-                placeholder="username"
+                className="h-10 rounded-xl border-[#e3e7ef] bg-white"
+                placeholder="Masukkan username"
                 required
               />
             </label>
 
             <label className="grid gap-2 text-sm font-medium">
-              Role
+              Role akun
               <select
                 value={form.role}
                 onChange={(event) =>
@@ -358,7 +508,7 @@ export function UsersPage() {
                     role: event.target.value as UserRole,
                   }))
                 }
-                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                className="h-10 rounded-xl border border-[#e3e7ef] bg-white px-3 text-sm outline-none focus-visible:border-[#0528f2] focus-visible:ring-[3px] focus-visible:ring-[#0528f2]/15"
               >
                 {roles.map((role) => (
                   <option key={role} value={role}>
@@ -379,7 +529,7 @@ export function UsersPage() {
                       password: event.target.value,
                     }))
                   }
-                  className="pr-10"
+                  className="h-10 rounded-xl border-[#e3e7ef] bg-white pr-10"
                   minLength={isEditing ? undefined : 6}
                   placeholder={
                     isEditing
@@ -414,13 +564,25 @@ export function UsersPage() {
               <Button
                 type="button"
                 variant="outline"
+                className="h-10 cursor-pointer rounded-xl border-[#e3e7ef]"
                 onClick={() => setIsDialogOpen(false)}
               >
                 Batal
               </Button>
-              <Button type="submit">
+              <Button
+                type="submit"
+                pending={isSubmitting}
+                disabled={isSubmitting}
+                className="h-10 cursor-pointer rounded-xl bg-[#0528f2] px-4 text-white"
+              >
                 {isEditing ? <PencilIcon /> : <PlusIcon />}
-                {isEditing ? "Simpan" : "Tambah"}
+                {isSubmitting
+                  ? isEditing
+                    ? "Menyimpan..."
+                    : "Menambah..."
+                  : isEditing
+                    ? "Simpan"
+                    : "Tambah"}
               </Button>
             </DialogFooter>
           </form>
@@ -430,24 +592,36 @@ export function UsersPage() {
       <AlertDialog
         open={Boolean(deleteTarget)}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null)
+          if (!open && !isDeletingUser) setDeleteTarget(null)
         }}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogMedia>
-              <TriangleAlertIcon />
+            <AlertDialogMedia className="bg-orange-50 text-[#f2852e]">
+              <TriangleAlertIcon className="size-5" />
             </AlertDialogMedia>
-            <AlertDialogTitle>Hapus pengguna?</AlertDialogTitle>
+            <AlertDialogTitle>Delete user?</AlertDialogTitle>
             <AlertDialogDescription>
-              Pengguna {deleteTarget?.username} akan dihapus permanen dari
-              sistem.
+              User{" "}
+              <span className="font-semibold text-foreground">
+                {deleteTarget?.username}
+              </span>{" "}
+              akan dihapus permanen dari sistem.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={onDelete}>
-              Hapus
+            <AlertDialogCancel disabled={isDeletingUser}>
+              Batal
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isDeletingUser}
+              onClick={(event) => {
+                event.preventDefault()
+                void onDelete()
+              }}
+            >
+              {isDeletingUser ? "Menghapus..." : "Hapus"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

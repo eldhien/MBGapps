@@ -1,40 +1,23 @@
 import { cn } from "@/lib/utils"
 import { AlertToast } from "@/components/ui/alert-toast"
 import { Button } from "@/components/ui/button"
-import {
-  Field,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field"
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/features/auth/AuthProvider"
 import { api } from "@/lib/api"
-import {
-  EyeIcon,
-  EyeOffIcon,
-  GalleryVerticalEndIcon,
-} from "lucide-react"
-import { useState } from "react"
-import { Link, useLocation, useNavigate } from "react-router-dom"
+import logoSrc from "@/assets/logo.svg"
+import { EyeIcon, EyeOffIcon } from "lucide-react"
+import { useState, type ComponentProps, type FormEvent } from "react"
+import { Link, useNavigate } from "react-router-dom"
 
-type LocationState = {
-  from?: {
-    pathname?: string
-  }
-}
-
-export function LoginForm({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
+export function LoginForm({ className, ...props }: ComponentProps<"div">) {
   const navigate = useNavigate()
-  const location = useLocation()
   const { refreshProfile } = useAuth()
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
 
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
     setIsSubmitting(true)
@@ -46,8 +29,10 @@ export function LoginForm({
     try {
       await api.login({ password, username })
       await refreshProfile()
-      const state = location.state as LocationState | null
-      navigate(state?.from?.pathname ?? "/dashboard", { replace: true })
+      navigate("/dashboard", {
+        replace: true,
+        state: { loginSuccess: true },
+      })
     } catch (error) {
       setError(error instanceof Error ? error.message : "Gagal login.")
       setIsSubmitting(false)
@@ -71,10 +56,14 @@ export function LoginForm({
               to="/login"
               className="flex flex-col items-center gap-2 font-medium"
             >
-              <div className="flex size-8 items-center justify-center rounded-md">
-                <GalleryVerticalEndIcon className="size-6" />
+              <div className="flex size-12 items-center justify-center overflow-hidden rounded-xl bg-[#0528f2] shadow-[0_10px_28px_rgba(15,23,42,0.08)]">
+                <img
+                  src={logoSrc}
+                  alt="MBG App"
+                  className="size-full w-8 object-contain p-1"
+                />
               </div>
-              <span className="sr-only">NIC MBG</span>
+              <span className="sr-only">MBG App</span>
             </Link>
             <h1 className="text-xl font-bold">Masuk ke MBG Dashboard</h1>
           </div>

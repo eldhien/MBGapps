@@ -1,5 +1,6 @@
 type DangerCategory = "Ringan" | "Sedang" | "Berat"
 type AnalysisPeriod = "24h" | "7d" | "30d" | "all"
+type TrendStatus = "Normal" | "Meningkat" | "Akselerasi Tinggi"
 
 type ComplaintInput = {
   batchId: string | null
@@ -49,51 +50,144 @@ const categoryRank: Record<DangerCategory, number> = {
   Berat: 3,
 }
 
+// ─── 1. EXPANDED SYMPTOM CATALOG ─────────────────────────────────────────────
+// Menambahkan kosakata lokal (bahasa daerah), slang medis, dan sinonim
+// untuk meningkatkan cakupan deteksi gejala dari laporan teks bebas.
 const symptomCatalog = [
   {
     category: "Ringan",
     label: "Ruam merah",
-    keywords: ["ruam merah", "kemerahan", "merah merah", "kulit merah"],
+    keywords: [
+      "ruam merah",
+      "kemerahan",
+      "merah merah",
+      "kulit merah",
+      "kulit memerah",
+      "bintik merah",
+      "bercak merah",
+      "kulit kemerahan",
+    ],
   },
   {
     category: "Ringan",
     label: "Alergi ringan",
-    keywords: ["gatal", "bentol", "biduran", "bersin", "kesemutan bibir"],
+    keywords: [
+      "gatal",
+      "gatel",
+      "bentol",
+      "bentol-bentol",
+      "biduran",
+      "bersin",
+      "kesemutan bibir",
+      "urtikaria",
+      "alergi ringan",
+      "kulit gatal",
+      "gatal-gatal",
+    ],
   },
   {
     category: "Sedang",
     label: "Diare",
-    keywords: ["diare", "mencret", "bab cair", "buang air cair", "sakit perut"],
+    keywords: [
+      "diare",
+      "mencret",
+      "mising-mising",
+      "mising mising",
+      "bab cair",
+      "buang air cair",
+      "sakit perut",
+      "sakit weteng",
+      "perut mulas",
+      "mencret-mencret",
+      "buang air terus",
+      "bab terus",
+      "perut sakit",
+    ],
   },
   {
     category: "Sedang",
     label: "Demam/tifoid",
-    keywords: ["tipes", "typhus", "tifus", "demam tifoid", "demam"],
+    keywords: [
+      "tipes",
+      "typhus",
+      "tifus",
+      "demam tifoid",
+      "typhoid",
+      "demam",
+      "panas badan",
+      "badan panas",
+      "greges",
+      "meriang",
+      "panas tinggi",
+      "suhu tinggi",
+    ],
   },
   {
     category: "Sedang",
     label: "Mual muntah",
-    keywords: ["mual", "muntah", "enek", "kram perut", "perut melilit"],
+    keywords: [
+      "mual",
+      "muntah",
+      "enek",
+      "enek-enek",
+      "kram perut",
+      "perut melilit",
+      "sebah",
+      "mau muntah",
+      "rasa mual",
+      "perut begah",
+      "begah",
+      "puyeng",
+      "mumet",
+      "pusing",
+      "sakit kepala",
+    ],
   },
   {
     category: "Sedang",
     label: "Alergi sedang",
-    keywords: ["bibir bengkak", "mata bengkak", "biduran menyebar", "bengkak"],
+    keywords: [
+      "bibir bengkak",
+      "mata bengkak",
+      "biduran menyebar",
+      "bengkak",
+      "alergi sedang",
+      "wajah bengkak",
+      "muka bengkak",
+    ],
   },
   {
     category: "Berat",
     label: "Pingsan",
-    keywords: ["pingsan", "hampir pingsan", "hilang kesadaran", "kolaps"],
+    keywords: [
+      "pingsan",
+      "hampir pingsan",
+      "hilang kesadaran",
+      "kolaps",
+      "tidak sadarkan diri",
+      "jatuh pingsan",
+      "sawan",
+      "nggliyeng",
+    ],
   },
   {
     category: "Berat",
     label: "Sesak napas",
-    keywords: ["sesak napas", "sulit bernapas", "nafas sesak", "napas berat"],
+    keywords: [
+      "sesak napas",
+      "sulit bernapas",
+      "nafas sesak",
+      "napas berat",
+      "sulit nafas",
+      "napas pendek",
+      "megap-megap",
+      "napas susah",
+    ],
   },
   {
     category: "Berat",
     label: "Kejang-kejang",
-    keywords: ["kejang", "kejang kejang", "step"],
+    keywords: ["kejang", "kejang kejang", "step", "kaget-kaget", "tubuh kaku"],
   },
   {
     category: "Berat",
@@ -105,6 +199,13 @@ const symptomCatalog = [
       "kulit pucat",
       "lemas drastis",
       "bengkak parah",
+      "anaphylaxis",
+      "anafilaktik",
+      "reaksi anafilaktik",
+      "tubuh lemas",
+      "lemas banget",
+      "kulit membiru",
+      "bibir biru",
     ],
   },
   {
@@ -116,6 +217,10 @@ const symptomCatalog = [
       "mengeluarkan buih",
       "mulut berbuih",
       "reaksi serius",
+      "mabuk makanan",
+      "food poisoning",
+      "muntah darah",
+      "berak darah",
     ],
   },
 ] satisfies {
@@ -124,6 +229,10 @@ const symptomCatalog = [
   keywords: string[]
 }[]
 
+// ─── 2. IMPROVED NEGATION DETECTION ──────────────────────────────────────────
+// Memeriksa 6 kata sebelum kata kunci (diperluas dari 3) dan
+// juga memeriksa apakah ada negasi dalam 20 karakter SETELAH kata kunci
+// untuk menangani kalimat seperti "mual tapi sudah tidak jadi muntah".
 const negationWords = [
   "tidak",
   "tdk",
@@ -133,6 +242,10 @@ const negationWords = [
   "bukan",
   "tanpa",
   "belum",
+  "sudah tidak",
+  "sudah ga",
+  "tak",
+  "tiada",
 ]
 
 function normalizeText(value: string) {
@@ -169,9 +282,17 @@ function similarity(a: string, b: string) {
 }
 
 function hasNegationBefore(text: string, matchStart: number) {
-  const prefix = text.slice(Math.max(0, matchStart - 28), matchStart).trim()
+  // Perlebar jendela dari 28 karakter (3 kata) menjadi 48 karakter (~6 kata)
+  const prefix = text.slice(Math.max(0, matchStart - 48), matchStart).trim()
   const words = prefix.split(/\s+/).filter(Boolean)
-  return words.slice(-3).some((word) => negationWords.includes(word))
+  return words.slice(-6).some((word) => negationWords.includes(word))
+}
+
+function hasNegationAfter(text: string, matchEnd: number) {
+  // Cek apakah negasi muncul dalam 30 karakter setelah kata kunci
+  // menangkap pola: "mual ... sudah tidak jadi muntah"
+  const suffix = text.slice(matchEnd, matchEnd + 30).trim()
+  return negationWords.some((neg) => suffix.startsWith(neg))
 }
 
 function findKeywordMatch(text: string, keyword: string) {
@@ -179,9 +300,14 @@ function findKeywordMatch(text: string, keyword: string) {
   const exactIndex = text.indexOf(normalizedKeyword)
 
   if (exactIndex >= 0) {
-    return hasNegationBefore(text, exactIndex)
-      ? null
-      : { confidence: 0.96, matchedText: keyword }
+    const matchEnd = exactIndex + normalizedKeyword.length
+    if (
+      hasNegationBefore(text, exactIndex) ||
+      hasNegationAfter(text, matchEnd)
+    ) {
+      return null
+    }
+    return { confidence: 0.96, matchedText: keyword }
   }
 
   const keywordWords = normalizedKeyword.split(" ")
@@ -196,8 +322,13 @@ function findKeywordMatch(text: string, keyword: string) {
     const candidate = words.slice(index, index + windowSize).join(" ")
     const score = similarity(candidate, normalizedKeyword)
     const charIndex = text.indexOf(candidate)
+    const charEnd = charIndex + candidate.length
 
-    if (score >= 0.82 && !hasNegationBefore(text, charIndex)) {
+    if (
+      score >= 0.82 &&
+      !hasNegationBefore(text, charIndex) &&
+      !hasNegationAfter(text, charEnd)
+    ) {
       return { confidence: Number((0.72 + score * 0.2).toFixed(2)), matchedText: candidate }
     }
   }
@@ -299,14 +430,40 @@ function getRiskReasons(input: {
     : ["Kategori dihitung dari kombinasi jenis gejala, jumlah siswa, frekuensi keluhan, sekolah terdampak, dan konteks batch."]
 }
 
-function getAction(category: DangerCategory, schoolCount: number, hasBatchContext: boolean) {
+// ─── 3. DYNAMIC ACTION RECOMMENDATIONS ───────────────────────────────────────
+// Menyusun saran tindak lanjut secara dinamis menggunakan data spesifik:
+// nama menu, nama driver, dan ID batch — bukan lagi templat teks generik.
+function getAction(
+  category: DangerCategory,
+  schoolCount: number,
+  batches: BatchContext[]
+): string {
+  const hasBatchContext = batches.length > 0
+  const firstBatch = batches[0]
+  const batchRef = firstBatch
+    ? [
+        firstBatch.id,
+        firstBatch.menuName ? `menu: ${firstBatch.menuName}` : null,
+        firstBatch.driverName ? `kurir: ${firstBatch.driverName}` : null,
+      ]
+        .filter(Boolean)
+        .join(", ")
+    : null
+
   if (category === "Berat") {
-    return hasBatchContext
-      ? "Prioritaskan audit batch/menu terkait, cek sampel makanan, tahan distribusi lanjutan bila perlu, dan koordinasikan tindak lanjut medis."
-      : "Prioritaskan validasi keluhan, cek kronologi sekolah, dan koordinasikan tindak lanjut medis."
+    if (hasBatchContext && batchRef) {
+      return `Segera audit batch ${batchRef}. Tahan distribusi lanjutan bila perlu, cek sampel makanan, dan koordinasikan tindak lanjut medis.`
+    }
+    if (hasBatchContext) {
+      return "Prioritaskan audit batch/menu terkait, cek sampel makanan, tahan distribusi lanjutan bila perlu, dan koordinasikan tindak lanjut medis."
+    }
+    return "Prioritaskan validasi keluhan, cek kronologi sekolah, dan koordinasikan tindak lanjut medis."
   }
 
   if (category === "Sedang" || schoolCount > 1) {
+    if (hasBatchContext && batchRef) {
+      return `Bandingkan menu dan jam distribusi batch ${batchRef} di sekolah terdampak sebelum produksi berikutnya.`
+    }
     return "Bandingkan menu, jam distribusi, dan sekolah terdampak sebelum produksi berikutnya."
   }
 
@@ -350,6 +507,82 @@ function createSchoolNameMap(schools: SchoolInput[]) {
 
 function getSchoolName(complaint: ComplaintInput, schoolNames: Map<string, string>) {
   return schoolNames.get(complaint.sekolahId) ?? complaint.sekolahUsername ?? complaint.sekolahId
+}
+
+// ─── 4. BATCH ANOMALY DETECTION ───────────────────────────────────────────────
+// Mendeteksi ketika keluhan dari ≥3 sekolah berbeda berasal dari batch yang sama.
+// Ini menandakan potensi kontaminasi/masalah pada satu siklus produksi.
+function detectBatchAnomalies(
+  complaints: ComplaintInput[],
+  batchById: Map<string, BatchContext>,
+  schoolNames: Map<string, string>
+) {
+  const batchSchools = new Map<string, Set<string>>()
+  const batchComplaintCount = new Map<string, number>()
+
+  for (const complaint of complaints) {
+    if (!complaint.batchId) continue
+    const schoolName = schoolNames.get(complaint.sekolahId) ?? complaint.sekolahUsername ?? complaint.sekolahId
+
+    if (!batchSchools.has(complaint.batchId)) {
+      batchSchools.set(complaint.batchId, new Set())
+    }
+    batchSchools.get(complaint.batchId)!.add(schoolName)
+    batchComplaintCount.set(complaint.batchId, (batchComplaintCount.get(complaint.batchId) ?? 0) + 1)
+  }
+
+  const anomalies: {
+    batchId: string
+    menuName: string | null
+    driverName: string | null
+    affectedSchools: string[]
+    totalComplaints: number
+  }[] = []
+
+  for (const [batchId, schools] of batchSchools.entries()) {
+    if (schools.size >= 3) {
+      const batch = batchById.get(batchId)
+      anomalies.push({
+        batchId,
+        menuName: batch?.menuName ?? null,
+        driverName: batch?.driverName ?? null,
+        affectedSchools: Array.from(schools).sort(),
+        totalComplaints: batchComplaintCount.get(batchId) ?? 0,
+      })
+    }
+  }
+
+  return anomalies.sort((a, b) => b.affectedSchools.length - a.affectedSchools.length)
+}
+
+// ─── 5. EXPONENTIAL TREND DETECTION ──────────────────────────────────────────
+// Membandingkan jumlah keluhan 2 jam terakhir vs 2 jam sebelumnya.
+// Jika rasio ≥ 3x → "Akselerasi Tinggi", ≥ 1.5x → "Meningkat", else "Normal".
+function detectTrend(complaints: ComplaintInput[]): { status: TrendStatus; rate: number } {
+  if (!complaints.length) return { status: "Normal", rate: 0 }
+
+  const now = new Date()
+  const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000)
+  const fourHoursAgo = new Date(now.getTime() - 4 * 60 * 60 * 1000)
+
+  const recent = complaints.filter(
+    (c) => c.waktuKejadian >= twoHoursAgo && c.waktuKejadian < now
+  ).length
+
+  const previous = complaints.filter(
+    (c) => c.waktuKejadian >= fourHoursAgo && c.waktuKejadian < twoHoursAgo
+  ).length
+
+  if (recent === 0 && previous === 0) return { status: "Normal", rate: 0 }
+
+  // Jika sebelumnya tidak ada keluhan tapi sekarang ada, anggap sebagai lonjakan besar
+  const rate = previous === 0 ? recent : Number((recent / previous).toFixed(2))
+
+  let status: TrendStatus = "Normal"
+  if (rate >= 3) status = "Akselerasi Tinggi"
+  else if (rate >= 1.5) status = "Meningkat"
+
+  return { status, rate }
 }
 
 export function buildComplaintAnalysis(input: {
@@ -428,7 +661,8 @@ export function buildComplaintAnalysis(input: {
       )
 
       return {
-        action: getAction(category, schools.length, batches.length > 0),
+        // Gunakan getAction dinamis dengan data batch aktual
+        action: getAction(category, schools.length, batches),
         batches: batches.map((batch) => ({
           id: batch.id,
           driverName: batch.driverName,
@@ -474,6 +708,10 @@ export function buildComplaintAnalysis(input: {
   const severePatterns = patterns.filter((pattern) => pattern.category === "Berat")
   const topPattern = patterns[0] ?? null
 
+  // Jalankan deteksi fitur baru
+  const batchAnomalies = detectBatchAnomalies(complaints, batchById, schoolNames)
+  const trend = detectTrend(complaints)
+
   return {
     generatedAt: new Date().toISOString(),
     period: input.period,
@@ -497,6 +735,8 @@ export function buildComplaintAnalysis(input: {
       totalStudents,
     },
     patterns,
+    batchAnomalies,
+    trend,
   }
 }
 

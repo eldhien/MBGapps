@@ -3,18 +3,24 @@ import {
   ActivityIcon,
   AlertTriangleIcon,
   BrainCircuitIcon,
+  ChefHatIcon,
+  ChevronDownIcon,
   ClockIcon,
+  PackageSearchIcon,
   RefreshCwIcon,
   SchoolIcon,
+  TrendingUpIcon,
   TruckIcon,
   UsersRoundIcon,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import type {
   ComplaintAnalysis,
   ComplaintAnalysisPeriod,
   ComplaintDangerCategory,
+  ComplaintTrendStatus,
 } from "@/lib/api"
 import { api } from "@/lib/api"
 import {
@@ -73,34 +79,39 @@ export function ComplaintPatternsAiPage() {
   const [period, setPeriod] = useState<ComplaintAnalysisPeriod>("7d")
   const [isLoading, setIsLoading] = useState(!cachedInitialAnalysis)
   const [error, setError] = useState<string | null>(null)
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(false)
+  const [isPatternsMinimized, setIsPatternsMinimized] = useState(false)
 
-  const loadData = useCallback(async (force = false) => {
-    const cacheKey = getComplaintAnalysisCacheKey(period)
-    const cachedAnalysis = getCachedPageData<ComplaintAnalysis>(cacheKey)
+  const loadData = useCallback(
+    async (force = false) => {
+      const cacheKey = getComplaintAnalysisCacheKey(period)
+      const cachedAnalysis = getCachedPageData<ComplaintAnalysis>(cacheKey)
 
-    if (!force && cachedAnalysis) {
-      setAnalysis(cachedAnalysis)
-      setIsLoading(false)
+      if (!force && cachedAnalysis) {
+        setAnalysis(cachedAnalysis)
+        setIsLoading(false)
+        setError(null)
+        return
+      }
+
+      setIsLoading(true)
       setError(null)
-      return
-    }
 
-    setIsLoading(true)
-    setError(null)
-
-    try {
-      const response = await api.studentComplaints.analysis(period)
-      setAnalysis(setCachedPageData(cacheKey, response.data))
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Gagal memuat analisis keluhan siswa."
-      )
-    } finally {
-      setIsLoading(false)
-    }
-  }, [period])
+      try {
+        const response = await api.studentComplaints.analysis(period)
+        setAnalysis(setCachedPageData(cacheKey, response.data))
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Gagal memuat analisis keluhan siswa."
+        )
+      } finally {
+        setIsLoading(false)
+      }
+    },
+    [period]
+  )
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -113,103 +124,154 @@ export function ComplaintPatternsAiPage() {
   const topPattern = analysis?.summary.topPattern ?? null
   const patterns = analysis?.patterns ?? []
 
+  const trendStatus = analysis?.trend.status ?? null
+
+  function getTrendClass(status: ComplaintTrendStatus | null) {
+    if (status === "Akselerasi Tinggi")
+      return "bg-red-50 text-red-600 border-red-200"
+    if (status === "Meningkat")
+      return "bg-amber-50 text-amber-700 border-amber-200"
+    return "bg-emerald-50 text-emerald-700 border-emerald-200"
+  }
+
   const stats = [
     {
       label: "Keluhan dianalisis",
       value: analysis?.stats.totalComplaints.toLocaleString("id-ID") ?? "0",
       icon: BrainCircuitIcon,
+      badge: null,
     },
     {
       label: "Siswa terdampak",
       value: analysis?.stats.totalStudents.toLocaleString("id-ID") ?? "0",
       icon: UsersRoundIcon,
+      badge: null,
     },
     {
       label: "Pola lintas sekolah",
       value: analysis?.stats.crossSchoolPatterns.toLocaleString("id-ID") ?? "0",
       icon: SchoolIcon,
+      badge: null,
     },
     {
       label: "Kategori berat",
       value: analysis?.stats.severePatterns.toLocaleString("id-ID") ?? "0",
       icon: AlertTriangleIcon,
+      badge: null,
+    },
+    {
+      label: "Tren keluhan",
+      value: trendStatus ?? "-",
+      icon: TrendingUpIcon,
+      badge: trendStatus,
     },
   ]
 
   return (
     <DashboardShell title="Deteksi Pola Keluhan Siswa (AI)">
       <div className="space-y-6">
-        <section className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-2xl font-semibold tracking-tight">
-              Deteksi Pola Keluhan Siswa (AI)
-            </h1>
-            <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Analisis pola gejala, sekolah terdampak, dan rekomendasi tindak
-              lanjut dari data keluhan siswa.
-            </p>
-          </div>
+        <Card className="overflow-hidden rounded-xl border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.06)]">
+          <CardHeader className="p-5 pb-0">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#eef2ff] text-[#0528f2]">
+                  <BrainCircuitIcon className="size-4" />
+                </div>
+                <div>
+                  <CardTitle className="text-base">
+                    Deteksi Pola Keluhan Siswa (AI)
+                  </CardTitle>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Analisis pola gejala, sekolah terdampak, dan rekomendasi
+                    tindak lanjut dari data keluhan siswa.
+                  </p>
+                </div>
+              </div>
 
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <div className="flex rounded-xl border border-[#e3e7ef] bg-white p-1">
-              {periodOptions.map((item) => {
-                const isActive = period === item.value
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="flex rounded-xl border border-[#e3e7ef] bg-white p-1">
+                  {periodOptions.map((item) => {
+                    const isActive = period === item.value
+
+                    return (
+                      <Button
+                        key={item.value}
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className={`h-8 cursor-pointer rounded-lg px-3 ${
+                          isActive
+                            ? "bg-[#0528f2] text-white hover:bg-[#0528f2] hover:text-white"
+                            : "text-muted-foreground hover:bg-[#f7f9ff] hover:text-[#0528f2]"
+                        }`}
+                        onClick={() => setPeriod(item.value)}
+                      >
+                        {item.label}
+                      </Button>
+                    )
+                  })}
+                </div>
+                <Button
+                  variant="outline"
+                  className="h-10 cursor-pointer rounded-xl border-[#e3e7ef] bg-white"
+                  onClick={() => void loadData(true)}
+                  pending={isLoading}
+                  disabled={isLoading}
+                >
+                  <RefreshCwIcon className="size-4" />
+                  Refresh
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6 p-5">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {stats.map((item) => {
+                const Icon = item.icon
 
                 return (
-                  <Button
-                    key={item.value}
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className={`h-8 cursor-pointer rounded-lg px-3 ${
-                      isActive
-                        ? "bg-[#0528f2] text-white hover:bg-[#0528f2] hover:text-white"
-                        : "text-muted-foreground hover:bg-[#f7f9ff] hover:text-[#0528f2]"
-                    }`}
-                    onClick={() => setPeriod(item.value)}
+                  <div
+                    key={item.label}
+                    className="rounded-xl border border-[#eef1f6] bg-white p-3 shadow-[0_8px_24px_rgba(15,23,42,0.03)]"
                   >
-                    {item.label}
-                  </Button>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">
+                        {item.label}
+                      </p>
+                      <Icon className="size-4 text-[#0528f2]" />
+                    </div>
+                    <div className="mt-2 flex items-end gap-2">
+                      {item.badge ? (
+                        <div className="flex flex-col gap-1">
+                          <span
+                            className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                              isLoading
+                                ? "border-[#edf0f4] bg-[#f8fafc] text-muted-foreground"
+                                : getTrendClass(
+                                    item.badge as ComplaintTrendStatus
+                                  )
+                            }`}
+                          >
+                            {isLoading ? "..." : item.value}
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="text-xl font-semibold">
+                          {isLoading ? "..." : item.value}
+                        </p>
+                      )}
+                      <span className="pb-0.5 text-[11px] font-medium text-muted-foreground">
+                        {periodOptions.find((p) => p.value === period)?.label ??
+                          period}{" "}
+                        terakhir
+                      </span>
+                    </div>
+                  </div>
                 )
               })}
             </div>
-            <Button
-              variant="outline"
-              className="h-10 cursor-pointer rounded-xl border-[#e3e7ef] bg-white"
-              onClick={() => void loadData(true)}
-              pending={isLoading}
-              disabled={isLoading}
-            >
-              <RefreshCwIcon className="size-4" />
-              Refresh
-            </Button>
-          </div>
-        </section>
-
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          {stats.map((item) => {
-            const Icon = item.icon
-
-            return (
-              <section
-                key={item.label}
-                className="rounded-xl border border-[#edf0f4] bg-white p-4 shadow-[0_12px_32px_rgba(15,23,42,0.03)]"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-medium text-muted-foreground">
-                    {item.label}
-                  </span>
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[#eef2ff] text-[#0528f2]">
-                    <Icon className="size-4" />
-                  </span>
-                </div>
-                <p className="mt-4 text-2xl font-bold">
-                  {isLoading ? "..." : item.value}
-                </p>
-              </section>
-            )
-          })}
-        </div>
+          </CardContent>
+        </Card>
 
         {error ? (
           <div className="rounded-xl border border-red-100 bg-red-50 p-3 text-sm font-medium text-red-600">
@@ -217,29 +279,43 @@ export function ComplaintPatternsAiPage() {
           </div>
         ) : null}
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-          <section className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.04)]">
-            <div className="border-b border-[#edf0f4] px-6 py-5">
+        <section className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-col gap-3 border-b border-[#edf0f4] px-6 py-5 md:flex-row md:items-center md:justify-between">
+            <div>
               <h2 className="text-lg font-semibold">Kesimpulan AI</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Ringkasan pola tertinggi dan evaluasi yang perlu dilakukan.
+                Ringkasan prioritas dari pola keluhan tertinggi.
               </p>
             </div>
-            <div className="space-y-4 p-6">
-              {isLoading ? (
-                <div className="rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-4 text-sm text-muted-foreground">
-                  Memuat analisis keluhan siswa...
-                </div>
-              ) : null}
+            {topPattern ? (
+              <div className="flex flex-wrap gap-2">
+                <span
+                  className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getCategoryClass(topPattern.category)}`}
+                >
+                  Kategori {topPattern.category}
+                </span>
+                <span className="rounded-full border border-[#edf0f4] bg-[#f8fafc] px-2.5 py-1 text-xs font-semibold">
+                  Confidence {formatPercent(topPattern.confidence)}
+                </span>
+              </div>
+            ) : null}
+          </div>
+          <div className="space-y-4 p-5">
+            {isLoading ? (
+              <div className="rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-4 text-sm text-muted-foreground">
+                Memuat analisis keluhan siswa...
+              </div>
+            ) : null}
 
-              {!isLoading && !patterns.length ? (
-                <div className="rounded-xl border border-dashed border-[#d8deea] p-6 text-center text-sm text-muted-foreground">
-                  Belum ada data keluhan siswa pada periode ini.
-                </div>
-              ) : null}
+            {!isLoading && !patterns.length ? (
+              <div className="rounded-xl border border-dashed border-[#d8deea] p-6 text-center text-sm text-muted-foreground">
+                Belum ada data keluhan siswa pada periode ini.
+              </div>
+            ) : null}
 
-              {!isLoading && topPattern ? (
-                <>
+            {!isLoading && topPattern ? (
+              <div className="space-y-4">
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_17rem]">
                   <div className="rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-4">
                     <div className="flex items-start gap-3">
                       <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#eef2ff] text-[#0528f2]">
@@ -252,8 +328,8 @@ export function ComplaintPatternsAiPage() {
                         <p className="mt-1 text-sm leading-6 text-muted-foreground">
                           Pola teratas adalah {topPattern.symptom.toLowerCase()}{" "}
                           dengan{" "}
-                          {topPattern.totalStudents.toLocaleString("id-ID")} siswa
-                          terdampak dari{" "}
+                          {topPattern.totalStudents.toLocaleString("id-ID")}{" "}
+                          siswa terdampak dari{" "}
                           {topPattern.schools.length.toLocaleString("id-ID")}{" "}
                           sekolah. Confidence{" "}
                           {formatPercent(topPattern.confidence)}.
@@ -262,60 +338,132 @@ export function ComplaintPatternsAiPage() {
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-[#edf0f4] bg-white p-4">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${getCategoryClass(topPattern.category)}`}
-                      >
-                        Kategori {topPattern.category}
-                      </span>
-                      <span className="rounded-full border border-[#edf0f4] bg-[#f8fafc] px-2.5 py-1 text-xs font-semibold">
-                        Confidence {formatPercent(topPattern.confidence)}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        Update terakhir {formatDateTime(topPattern.latestDate)}
-                      </span>
+                  <div className="grid gap-2 rounded-xl border border-[#edf0f4] bg-white p-4 sm:grid-cols-3 lg:grid-cols-1">
+                    <div>
+                      <p className="text-xs text-muted-foreground">
+                        Gejala utama
+                      </p>
+                      <p className="mt-1 line-clamp-1 text-sm font-semibold">
+                        {topPattern.symptom}
+                      </p>
                     </div>
-                    <p className="mt-4 text-sm font-semibold">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Siswa</p>
+                      <p className="mt-1 text-sm font-semibold">
+                        {topPattern.totalStudents.toLocaleString("id-ID")}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Update</p>
+                      <p className="mt-1 text-sm font-semibold">
+                        {formatDateTime(topPattern.latestDate)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-3 rounded-xl border border-[#edf0f4] bg-white p-4 md:flex-row md:items-center md:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold">
                       Rekomendasi tindak lanjut
                     </p>
-                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    <p className="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground">
                       {topPattern.action}
                     </p>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 rounded-lg border-[#dfe5ef]"
+                    onClick={() =>
+                      setIsSummaryExpanded((expanded) => !expanded)
+                    }
+                  >
+                    {isSummaryExpanded ? "Ringkas" : "Lihat detail"}
+                    <ChevronDownIcon
+                      className={
+                        isSummaryExpanded
+                          ? "ml-1 size-4 rotate-180 transition-transform"
+                          : "ml-1 size-4 transition-transform"
+                      }
+                    />
+                  </Button>
+                </div>
 
-                  {analysis?.summary.evaluationFocus.length ? (
-                    <div className="rounded-xl border border-[#edf0f4] bg-white p-4">
-                      <div className="flex items-center gap-2">
-                        <AlertTriangleIcon className="size-4 text-[#0528f2]" />
-                        <p className="text-sm font-semibold">
-                          Yang harus dievaluasi SPPG
-                        </p>
-                      </div>
-                      <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm leading-6 text-muted-foreground">
-                        {analysis.summary.evaluationFocus.map((focus) => (
-                          <li key={focus}>{focus}</li>
-                        ))}
-                      </ul>
+                {isSummaryExpanded ? (
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    <div className="rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-4">
+                      <p className="text-sm font-semibold">
+                        Rekomendasi lengkap
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                        {topPattern.action}
+                      </p>
                     </div>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.04)]">
-            <div className="flex flex-col gap-2 border-b border-[#edf0f4] px-6 py-5 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">Pola Terdeteksi</h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Diurutkan dari pola dengan risiko dan dampak tertinggi.
-                </p>
+                    {analysis?.summary.evaluationFocus.length ? (
+                      <div className="rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-4">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangleIcon className="size-4 text-[#0528f2]" />
+                          <p className="text-sm font-semibold">
+                            Yang harus dievaluasi SPPG
+                          </p>
+                        </div>
+                        <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm leading-6 text-muted-foreground">
+                          {analysis.summary.evaluationFocus.map((focus) => (
+                            <li key={focus}>{focus}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-[#e9edf4] bg-white shadow-[0_16px_42px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-col gap-3 border-b border-[#edf0f4] px-6 py-5 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Pola Terdeteksi</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Diurutkan dari pola dengan risiko dan dampak tertinggi.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
               <span className="w-fit rounded-full border border-[#edf0f4] bg-[#f8fafc] px-3 py-1.5 text-sm font-semibold">
                 {patterns.length.toLocaleString("id-ID")} pola
               </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="rounded-lg border-[#dfe5ef]"
+                onClick={() =>
+                  setIsPatternsMinimized((minimized) => !minimized)
+                }
+              >
+                {isPatternsMinimized ? "Lihat Detail" : "Kecilkan"}
+                <ChevronDownIcon
+                  className={
+                    isPatternsMinimized
+                      ? "ml-1 size-4 transition-transform"
+                      : "ml-1 size-4 rotate-180 transition-transform"
+                  }
+                />
+              </Button>
             </div>
+          </div>
+          {isPatternsMinimized ? (
+            <div className="p-5">
+              <div className="rounded-xl border border-[#edf0f4] bg-[#fbfcff] p-4 text-sm text-muted-foreground">
+                {" "}
+                {patterns.length.toLocaleString("id-ID")} pola tetap tersedia
+                untuk ditampilkan kembali.
+              </div>
+            </div>
+          ) : (
             <div className="p-6">
               <div className="space-y-3">
                 {patterns.map((pattern) => (
@@ -411,7 +559,9 @@ export function ComplaintPatternsAiPage() {
                               <span>
                                 {" "}
                                 - kirim{" "}
-                                {formatDateTime(batch.distributions[0].waktuKirim)}{" "}
+                                {formatDateTime(
+                                  batch.distributions[0].waktuKirim
+                                )}{" "}
                                 ({batch.distributions[0].status})
                               </span>
                             ) : null}
@@ -430,8 +580,74 @@ export function ComplaintPatternsAiPage() {
                 ))}
               </div>
             </div>
+          )}
+        </section>
+
+        {!isLoading && analysis?.batchAnomalies.length ? (
+          <section className="rounded-xl border border-red-100 bg-white shadow-[0_16px_42px_rgba(15,23,42,0.04)]">
+            <div className="flex items-center gap-3 border-b border-red-100 px-6 py-5">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600">
+                <PackageSearchIcon className="size-5" />
+              </span>
+              <div>
+                <h2 className="text-lg font-semibold">
+                  Anomali Batch Terdeteksi
+                </h2>
+                <p className="mt-0.5 text-sm text-muted-foreground">
+                  Batch berikut terhubung dengan keluhan dari 3 sekolah atau
+                  lebih.
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-4 p-6 md:grid-cols-2 xl:grid-cols-3">
+              {analysis.batchAnomalies.map((anomaly) => (
+                <div
+                  key={anomaly.batchId}
+                  className="rounded-xl border border-red-100 bg-red-50/50 p-4"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-sm font-bold text-red-700">
+                      {anomaly.batchId}
+                    </span>
+                    <span className="shrink-0 rounded-full border border-red-200 bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+                      Anomali Batch
+                    </span>
+                  </div>
+
+                  <div className="mt-3 space-y-1.5">
+                    {anomaly.menuName ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <ChefHatIcon className="size-3.5 shrink-0 text-red-500" />
+                        <span>{anomaly.menuName}</span>
+                      </div>
+                    ) : null}
+                    {anomaly.driverName ? (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <TruckIcon className="size-3.5 shrink-0 text-red-500" />
+                        <span>{anomaly.driverName}</span>
+                      </div>
+                    ) : null}
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <UsersRoundIcon className="size-3.5 shrink-0 text-red-500" />
+                      <span>{anomaly.totalComplaints} keluhan</span>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {anomaly.affectedSchools.map((school) => (
+                      <span
+                        key={school}
+                        className="rounded-full border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-700"
+                      >
+                        {school}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </section>
-        </div>
+        ) : null}
 
         {analysis ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">

@@ -93,6 +93,7 @@ export type StudentComplaint = {
 
 export type ComplaintAnalysisPeriod = "24h" | "7d" | "30d" | "all"
 export type ComplaintDangerCategory = "Ringan" | "Sedang" | "Berat"
+export type ComplaintTrendStatus = "Normal" | "Meningkat" | "Akselerasi Tinggi"
 
 export type ComplaintAnalysisPattern = {
   action: string
@@ -139,6 +140,17 @@ export type ComplaintAnalysis = {
     conclusion: string
     evaluationFocus: string[]
     topPattern: ComplaintAnalysisPattern | null
+  }
+  batchAnomalies: {
+    batchId: string
+    menuName: string | null
+    driverName: string | null
+    affectedSchools: string[]
+    totalComplaints: number
+  }[]
+  trend: {
+    status: ComplaintTrendStatus
+    rate: number
   }
 }
 

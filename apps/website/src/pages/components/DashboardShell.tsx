@@ -349,9 +349,12 @@ export function DashboardShell({
                           {searchResults.map((report) => (
                             <Link
                               key={report.id}
-                              to="/food-reports"
+                              to={`/reports/school-reports?reportId=${encodeURIComponent(report.id)}`}
                               className="block rounded-lg p-2 transition-colors hover:bg-[#f7f8fb]"
-                              onClick={() => setSearchOpen(false)}
+                              onClick={() => {
+                                setSearchOpen(false)
+                                setSearchQuery("")
+                              }}
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <p className="truncate text-sm font-semibold capitalize">

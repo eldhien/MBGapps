@@ -270,6 +270,55 @@ async function findProductionDistributionsForUser(user: {
   `
 }
 
+async function getDistributionOwnerSppgId(user: {
+  id: string
+  role: string
+  username: string
+}) {
+  if (user.role !== UserRole.SPPG) {
+    return null
+  }
+
+  return getSppgOwnerId(user, { createIfMissing: true })
+}
+
+async function findActiveDriverForUser(
+  driverId: string,
+  user: {
+    id: string
+    role: string
+    username: string
+  },
+  ownerSppgId: string | null
+) {
+  return prisma.driver.findFirst({
+    where: {
+      id: driverId,
+      isActive: true,
+      ...(user.role === UserRole.SPPG ? { sppgId: ownerSppgId as string } : {}),
+    },
+    select: { id: true },
+  })
+}
+
+async function findBatchForDistributionUser(
+  batchId: string,
+  user: {
+    id: string
+    role: string
+    username: string
+  },
+  ownerSppgId: string | null
+) {
+  return prisma.batchProduksi.findFirst({
+    where: {
+      id: batchId,
+      ...(user.role === UserRole.SPPG ? { petugasId: ownerSppgId as string } : {}),
+    },
+    select: { id: true, totalPorsi: true },
+  })
+}
+
 productionDistributionsRouter.get("/", async (req, res, next) => {
   try {
     const auth = await requireRoles(
@@ -342,10 +391,19 @@ productionDistributionsRouter.post("/", async (req, res, next) => {
       })
     }
 
-    const batch = await prisma.batchProduksi.findUnique({
-      where: { id: batchId },
-      select: { id: true, totalPorsi: true },
-    })
+    const ownerSppgId = await getDistributionOwnerSppgId(auth.currentUser)
+
+    if (auth.currentUser.role === UserRole.SPPG && !ownerSppgId) {
+      return res.status(400).json({
+        message: "Akun SPPG tidak valid. Silakan login ulang.",
+      })
+    }
+
+    const batch = await findBatchForDistributionUser(
+      batchId,
+      auth.currentUser,
+      ownerSppgId
+    )
 
     if (!batch) {
       return res.status(404).json({ message: "Batch tidak ditemukan." })
@@ -361,27 +419,14 @@ productionDistributionsRouter.post("/", async (req, res, next) => {
       })
     }
 
-    const driver = await prisma.driver.findFirst({
-      where: {
-        id: driverId,
-        isActive: true,
-      },
-      select: { id: true },
-    })
+    const driver = await findActiveDriverForUser(
+      driverId,
+      auth.currentUser,
+      ownerSppgId
+    )
 
     if (!driver) {
-      return res.status(400).json({ message: "Driver tidak valid atau tidak aktif." })
-    }
-
-    const ownerSppgId =
-      auth.currentUser.role === UserRole.SPPG
-        ? await getSppgOwnerId(auth.currentUser, { createIfMissing: true })
-        : null
-
-    if (auth.currentUser.role === UserRole.SPPG && !ownerSppgId) {
-      return res.status(400).json({
-        message: "Akun SPPG tidak valid. Silakan login ulang.",
-      })
+      return res.status(400).json({ message: "Driver tidak valid atau tidak aktif untuk SPPG ini." })
     }
 
     const schoolRecords = await prisma.school.findMany({
@@ -482,21 +527,39 @@ productionDistributionsRouter.patch("/:id", async (req, res, next) => {
     }
 
     if (driverId) {
-      const driver = await prisma.driver.findFirst({
-        where: { id: driverId, isActive: true },
-        select: { id: true },
-      })
+      const ownerSppgId = await getDistributionOwnerSppgId(auth.currentUser)
+
+      if (auth.currentUser.role === UserRole.SPPG && !ownerSppgId) {
+        return res.status(400).json({
+          message: "Akun SPPG tidak valid. Silakan login ulang.",
+        })
+      }
+
+      const driver = await findActiveDriverForUser(
+        driverId,
+        auth.currentUser,
+        ownerSppgId
+      )
 
       if (!driver) {
-        return res.status(400).json({ message: "Driver tidak valid atau tidak aktif." })
+        return res.status(400).json({ message: "Driver tidak valid atau tidak aktif untuk SPPG ini." })
       }
     }
 
     if (batchId) {
-      const batch = await prisma.batchProduksi.findUnique({
-        where: { id: batchId },
-        select: { id: true, totalPorsi: true },
-      })
+      const ownerSppgId = await getDistributionOwnerSppgId(auth.currentUser)
+
+      if (auth.currentUser.role === UserRole.SPPG && !ownerSppgId) {
+        return res.status(400).json({
+          message: "Akun SPPG tidak valid. Silakan login ulang.",
+        })
+      }
+
+      const batch = await findBatchForDistributionUser(
+        batchId,
+        auth.currentUser,
+        ownerSppgId
+      )
 
       if (!batch) {
         return res.status(404).json({ message: "Batch tidak ditemukan." })

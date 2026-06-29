@@ -1,7 +1,9 @@
-import { KategoriKomposisi, Prisma } from "@prisma/client"
+import { KategoriKomposisi, Prisma, UserRole } from "@prisma/client"
 import { Request, Response } from "express"
 
+import { getCurrentUser } from "../auth/session.js"
 import { prisma } from "../lib/prisma.js"
+import { getSppgOwnerId } from "../lib/user-scope.js"
 
 type BatchIngredientPayload = {
   harga?: number | string | null
@@ -106,6 +108,42 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Kesalahan tidak diketahui"
 }
 
+async function getBatchOwnerFilter(user: {
+  id: string
+  role: string
+  username: string
+}) {
+  if (user.role === UserRole.SUPER_ADMIN) {
+    return {}
+  }
+
+  if (user.role !== UserRole.SPPG) {
+    return { id: "__forbidden__" }
+  }
+
+  const sppgOwnerId = await getSppgOwnerId(user, { createIfMissing: true })
+
+  return sppgOwnerId
+    ? { petugasId: sppgOwnerId }
+    : { id: "__invalid_sppg__" }
+}
+
+async function getAccessibleBatch(
+  id: string,
+  user: {
+    id: string
+    role: string
+    username: string
+  }
+) {
+  const ownerFilter = await getBatchOwnerFilter(user)
+
+  return prisma.batchProduksi.findFirst({
+    where: { id, ...ownerFilter },
+    select: { id: true },
+  })
+}
+
 function toVariantCreateInput(
   varian: BatchVariantPayload[] | undefined,
   fallbackPorsi: number
@@ -137,7 +175,26 @@ function toVariantCreateInput(
 // GET /api/batches
 export const getBatches = async (req: Request, res: Response) => {
   try {
+    const currentUser = await getCurrentUser(req)
+
+    if (!currentUser) {
+      res.status(401).json({ message: "Tidak terautentikasi." })
+      return
+    }
+
+    if (
+      currentUser.role !== UserRole.SUPER_ADMIN &&
+      currentUser.role !== UserRole.SPPG
+    ) {
+      res.status(403).json({
+        message: "Hanya SPPG atau Super Admin yang dapat melihat batch produksi.",
+      })
+      return
+    }
+
+    const ownerFilter = await getBatchOwnerFilter(currentUser)
     const batches = await prisma.batchProduksi.findMany({
+      where: ownerFilter,
       include: {
         menu: true,
         petugas: {
@@ -163,9 +220,17 @@ export const getBatches = async (req: Request, res: Response) => {
 // GET /api/batches/:id
 export const getBatchById = async (req: Request, res: Response): Promise<void> => {
   try {
+    const currentUser = await getCurrentUser(req)
+
+    if (!currentUser) {
+      res.status(401).json({ message: "Tidak terautentikasi." })
+      return
+    }
+
     const id = req.params.id as string
-    const batch = await prisma.batchProduksi.findUnique({
-      where: { id },
+    const ownerFilter = await getBatchOwnerFilter(currentUser)
+    const batch = await prisma.batchProduksi.findFirst({
+      where: { id, ...ownerFilter },
       include: {
         menu: true,
         petugas: { select: { id: true, username: true } },
@@ -199,6 +264,23 @@ export const getBatchById = async (req: Request, res: Response): Promise<void> =
 // POST /api/batches
 export const createBatch = async (req: Request, res: Response) => {
   try {
+    const currentUser = await getCurrentUser(req)
+
+    if (!currentUser) {
+      res.status(401).json({ message: "Tidak terautentikasi." })
+      return
+    }
+
+    if (
+      currentUser.role !== UserRole.SUPER_ADMIN &&
+      currentUser.role !== UserRole.SPPG
+    ) {
+      res.status(403).json({
+        message: "Hanya SPPG atau Super Admin yang dapat membuat batch produksi.",
+      })
+      return
+    }
+
     const {
       menuId,
       namaMenu,
@@ -233,6 +315,18 @@ export const createBatch = async (req: Request, res: Response) => {
       return
     }
 
+    const ownerSppgId =
+      currentUser.role === UserRole.SPPG
+        ? await getSppgOwnerId(currentUser, { createIfMissing: true })
+        : null
+
+    if (currentUser.role === UserRole.SPPG && !ownerSppgId) {
+      res.status(400).json({
+        message: "Akun SPPG tidak valid. Silakan login ulang.",
+      })
+      return
+    }
+
     let newBatch
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
@@ -244,7 +338,10 @@ export const createBatch = async (req: Request, res: Response) => {
             totalPorsi: parsedTotalPorsi,
             waktuMulai: waktuMulai ? new Date(waktuMulai) : null,
             waktuSelesai: waktuSelesai ? new Date(waktuSelesai) : null,
-            petugasId: petugasId || null,
+            petugasId:
+              currentUser.role === UserRole.SPPG
+                ? ownerSppgId
+                : petugasId || null,
             driverId: driverId || null,
             status: "DIPRODUKSI",
             sekolah: {
@@ -296,12 +393,25 @@ export const createBatch = async (req: Request, res: Response) => {
 // PATCH /api/batches/:id/status
 export const updateBatchStatus = async (req: Request, res: Response): Promise<void> => {
   try {
+    const currentUser = await getCurrentUser(req)
+
+    if (!currentUser) {
+      res.status(401).json({ message: "Tidak terautentikasi." })
+      return
+    }
+
     const id = req.params.id as string
     const { status, catatanKualitas } = req.body
 
     const validStatuses = ["DRAFT", "DIPRODUKSI", "SIAP_KIRIM", "TERKIRIM", "DITERIMA", "DITOLAK"]
     if (!validStatuses.includes(status)) {
       res.status(400).json({ message: "Invalid status" })
+      return
+    }
+
+    const accessibleBatch = await getAccessibleBatch(id, currentUser)
+    if (!accessibleBatch) {
+      res.status(404).json({ message: "Batch tidak ditemukan." })
       return
     }
 
@@ -322,6 +432,13 @@ export const updateBatchStatus = async (req: Request, res: Response): Promise<vo
 
 export const updateBatch = async (req: Request, res: Response): Promise<void> => {
   try {
+    const currentUser = await getCurrentUser(req)
+
+    if (!currentUser) {
+      res.status(401).json({ message: "Tidak terautentikasi." })
+      return
+    }
+
     const id = req.params.id as string
     const { namaMenu, totalPorsi, varian, waktuMulai, waktuSelesai } =
       req.body as {
@@ -332,6 +449,12 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
         waktuSelesai?: string
       }
     const data: Prisma.BatchProduksiUncheckedUpdateInput = {}
+
+    const accessibleBatch = await getAccessibleBatch(id, currentUser)
+    if (!accessibleBatch) {
+      res.status(404).json({ message: "Batch tidak ditemukan." })
+      return
+    }
 
     if (typeof totalPorsi !== "undefined") {
       const parsedTotalPorsi = parsePositiveInteger(totalPorsi)
@@ -422,8 +545,53 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
 // PATCH /api/batches/:id/delivery
 export const updateBatchDelivery = async (req: Request, res: Response): Promise<void> => {
   try {
+    const currentUser = await getCurrentUser(req)
+
+    if (!currentUser) {
+      res.status(401).json({ message: "Tidak terautentikasi." })
+      return
+    }
+
     const id = req.params.id as string
     const { driverId, noKendaraan, jamKeberangkatan } = req.body
+
+    const accessibleBatch = await getAccessibleBatch(id, currentUser)
+    if (!accessibleBatch) {
+      res.status(404).json({ message: "Batch tidak ditemukan." })
+      return
+    }
+
+    if (driverId) {
+      const ownerSppgId =
+        currentUser.role === UserRole.SPPG
+          ? await getSppgOwnerId(currentUser, { createIfMissing: true })
+          : null
+
+      if (currentUser.role === UserRole.SPPG && !ownerSppgId) {
+        res.status(400).json({
+          message: "Akun SPPG tidak valid. Silakan login ulang.",
+        })
+        return
+      }
+
+      const driver = await prisma.driver.findFirst({
+        where: {
+          id: driverId,
+          isActive: true,
+          ...(currentUser.role === UserRole.SPPG
+            ? { sppgId: ownerSppgId as string }
+            : {}),
+        },
+        select: { id: true },
+      })
+
+      if (!driver) {
+        res.status(400).json({
+          message: "Driver tidak valid atau tidak aktif untuk SPPG ini.",
+        })
+        return
+      }
+    }
 
     const updatedBatch = await prisma.batchProduksi.update({
       where: { id },
@@ -444,7 +612,20 @@ export const updateBatchDelivery = async (req: Request, res: Response): Promise<
 
 export const deleteBatch = async (req: Request, res: Response): Promise<void> => {
   try {
+    const currentUser = await getCurrentUser(req)
+
+    if (!currentUser) {
+      res.status(401).json({ message: "Tidak terautentikasi." })
+      return
+    }
+
     const id = req.params.id as string
+
+    const accessibleBatch = await getAccessibleBatch(id, currentUser)
+    if (!accessibleBatch) {
+      res.status(404).json({ message: "Batch tidak ditemukan." })
+      return
+    }
 
     await prisma.batchProduksi.delete({
       where: { id },

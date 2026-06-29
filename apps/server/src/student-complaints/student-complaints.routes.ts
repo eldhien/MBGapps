@@ -11,7 +11,12 @@ import {
 } from "../lib/fallback-store.js"
 import { prisma } from "../lib/prisma.js"
 import { requireAuth } from "../middleware/auth.js"
-import { getReporterSchoolId, isUuid } from "../lib/user-scope.js"
+import {
+  getManagedSchoolReportIds,
+  getReporterSchoolId,
+  getSppgOwnerId,
+  isUuid,
+} from "../lib/user-scope.js"
 
 export const studentComplaintsRouter = Router()
 
@@ -54,6 +59,45 @@ async function resolveReporterSchools<T extends { sekolahId: string }>(
   }))
 }
 
+async function getComplaintSchoolFilter(currentUser: {
+  id: string
+  role: string
+  username: string
+}) {
+  const reporterSchoolId = await getReporterSchoolId(currentUser)
+
+  if (currentUser.role === "SEKOLAH") {
+    return {
+      sekolahId: {
+        in: [currentUser.id, reporterSchoolId].filter(Boolean) as string[],
+      },
+    }
+  }
+
+  if (currentUser.role === "SPPG") {
+    const sppgOwnerId = await getSppgOwnerId(currentUser, {
+      createIfMissing: true,
+    })
+    const schoolReporterIds = await getManagedSchoolReportIds(sppgOwnerId)
+
+    return {
+      sekolahId: {
+        in: schoolReporterIds.length
+          ? schoolReporterIds
+          : ["__no_managed_school__"],
+      },
+    }
+  }
+
+  return {}
+}
+
+function getFallbackSchoolIds(
+  filter: Awaited<ReturnType<typeof getComplaintSchoolFilter>>
+) {
+  return "sekolahId" in filter ? filter.sekolahId?.in : undefined
+}
+
 studentComplaintsRouter.get("/analysis", async (req, res, next) => {
   try {
     const currentUser = await getCurrentUser(req)
@@ -63,11 +107,7 @@ studentComplaintsRouter.get("/analysis", async (req, res, next) => {
     }
 
     const period = normalizeAnalysisPeriod(req.query.period)
-    const reporterSchoolId = await getReporterSchoolId(currentUser)
-    const schoolFilter =
-      currentUser.role === "SEKOLAH"
-        ? { sekolahId: { in: [currentUser.id, reporterSchoolId].filter(Boolean) as string[] } }
-        : {}
+    const schoolFilter = await getComplaintSchoolFilter(currentUser)
 
     const complaints = await prisma.studentComplaint.findMany({
       where: schoolFilter,
@@ -168,8 +208,13 @@ studentComplaintsRouter.get("/analysis", async (req, res, next) => {
       }
 
       const period = normalizeAnalysisPeriod(req.query.period)
-      const fallbackComplaints = listFallbackStudentComplaints(
-        currentUser.role === "SEKOLAH" ? currentUser.id : undefined
+      const fallbackFilter = await getComplaintSchoolFilter(currentUser)
+      const fallbackSchoolIds = getFallbackSchoolIds(fallbackFilter)
+      const fallbackComplaints = listFallbackStudentComplaints().filter(
+        (complaint) =>
+          fallbackSchoolIds
+            ? fallbackSchoolIds.includes(complaint.sekolahId)
+            : true
       )
 
       return res.json({
@@ -198,11 +243,7 @@ studentComplaintsRouter.get("/", async (req, res, next) => {
       return res.status(401).json({ message: "Tidak terautentikasi." })
     }
 
-    const reporterSchoolId = await getReporterSchoolId(currentUser)
-    const schoolFilter =
-      currentUser.role === "SEKOLAH"
-        ? { sekolahId: { in: [currentUser.id, reporterSchoolId].filter(Boolean) as string[] } }
-        : {}
+    const schoolFilter = await getComplaintSchoolFilter(currentUser)
 
     const complaints = await prisma.studentComplaint.findMany({
       where: schoolFilter,
@@ -216,9 +257,12 @@ studentComplaintsRouter.get("/", async (req, res, next) => {
       return res.status(401).json({ message: "Tidak terautentikasi." })
     }
 
+    const fallbackFilter = await getComplaintSchoolFilter(currentUser)
+    const fallbackSchoolIds = getFallbackSchoolIds(fallbackFilter)
+
     res.json({
-      data: listFallbackStudentComplaints(
-        currentUser.role === "SEKOLAH" ? currentUser.id : undefined
+      data: listFallbackStudentComplaints().filter((complaint) =>
+        fallbackSchoolIds ? fallbackSchoolIds.includes(complaint.sekolahId) : true
       ),
     })
   }

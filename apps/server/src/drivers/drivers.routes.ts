@@ -1,7 +1,8 @@
 import { Router } from "express"
+import { UserRole } from "@prisma/client"
 
 import { prisma } from "../lib/prisma.js"
-import { requireRoles } from "../lib/user-scope.js"
+import { getSppgOwnerId, requireRoles } from "../lib/user-scope.js"
 
 export const driversRouter = Router()
 
@@ -11,6 +12,7 @@ function toDriverResponse(driver: {
   phone: string | null
   vehicleNumber: string | null
   isActive: boolean
+  sppgId?: string | null
   createdAt: Date
   updatedAt: Date
 }) {
@@ -30,6 +32,24 @@ function cleanOptionalText(value?: string) {
   return cleaned ? cleaned : null
 }
 
+async function getDriverOwnerFilter(user: {
+  id: string
+  role: string
+  username: string
+}) {
+  if (user.role !== UserRole.SPPG) {
+    return {}
+  }
+
+  const sppgId = await getSppgOwnerId(user, { createIfMissing: true })
+
+  if (!sppgId) {
+    return { id: "00000000-0000-4000-8000-000000000000" }
+  }
+
+  return { sppgId }
+}
+
 driversRouter.get("/", async (req, res, next) => {
   try {
     const auth = await requireRoles(
@@ -43,8 +63,12 @@ driversRouter.get("/", async (req, res, next) => {
     }
 
     const activeOnly = req.query.active === "true"
+    const ownerFilter = await getDriverOwnerFilter(auth.currentUser)
     const drivers = await prisma.driver.findMany({
-      where: activeOnly ? { isActive: true } : undefined,
+      where: {
+        ...ownerFilter,
+        ...(activeOnly ? { isActive: true } : {}),
+      },
       orderBy: [{ isActive: "desc" }, { name: "asc" }],
     })
 
@@ -77,11 +101,23 @@ driversRouter.post("/", async (req, res, next) => {
       return res.status(400).json({ message: "Nama driver wajib diisi." })
     }
 
+    const ownerSppgId =
+      auth.currentUser.role === UserRole.SPPG
+        ? await getSppgOwnerId(auth.currentUser, { createIfMissing: true })
+        : null
+
+    if (auth.currentUser.role === UserRole.SPPG && !ownerSppgId) {
+      return res.status(400).json({
+        message: "Akun SPPG tidak valid. Silakan login ulang.",
+      })
+    }
+
     const driver = await prisma.driver.create({
       data: {
         name: normalizedName,
         phone: cleanOptionalText(phone),
         vehicleNumber: cleanOptionalText(vehicleNumber),
+        sppgId: ownerSppgId,
       },
     })
 
@@ -115,6 +151,16 @@ driversRouter.patch("/:id", async (req, res, next) => {
       return res.status(400).json({ message: "Nama driver wajib diisi." })
     }
 
+    const ownerFilter = await getDriverOwnerFilter(auth.currentUser)
+    const existingDriver = await prisma.driver.findFirst({
+      where: { id: req.params.id, ...ownerFilter },
+      select: { id: true },
+    })
+
+    if (!existingDriver) {
+      return res.status(404).json({ message: "Driver tidak ditemukan." })
+    }
+
     const driver = await prisma.driver.update({
       where: { id: req.params.id },
       data: {
@@ -145,9 +191,14 @@ driversRouter.delete("/:id", async (req, res, next) => {
       return res.status(auth.status).json({ message: auth.message })
     }
 
-    await prisma.driver.delete({
-      where: { id: req.params.id },
+    const ownerFilter = await getDriverOwnerFilter(auth.currentUser)
+    const deleted = await prisma.driver.deleteMany({
+      where: { id: req.params.id, ...ownerFilter },
     })
+
+    if (deleted.count === 0) {
+      return res.status(404).json({ message: "Driver tidak ditemukan." })
+    }
 
     return res.status(204).send()
   } catch (error) {

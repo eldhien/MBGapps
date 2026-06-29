@@ -30,7 +30,7 @@ Generate Prisma Client agar TypeScript bisa membaca model dari `prisma/schema.pr
 npx prisma generate
 ```
 
-Apply migration yang sudah ada di repo ke database Supabase:
+Apply migration yang sudah ada di repo ke database lokal:
 
 ```bash
 npx prisma migrate deploy
@@ -45,6 +45,7 @@ npx prisma migrate status
 Catatan penting:
 
 - Jangan menjalankan `npx prisma init` lagi setelah clone, karena schema dan folder Prisma sudah ada di repo.
+- Default koneksi lokal memakai database PostgreSQL `mbg_app` di `localhost:5432` dengan user/password `postgres`/`postgres`. Sesuaikan `apps/server/.env` jika konfigurasi PostgreSQL lokal berbeda.
 
 Untuk development migration baru, gunakan:
 

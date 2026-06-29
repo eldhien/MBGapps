@@ -10,6 +10,7 @@ import {
 import { uploadImageToCloudinary } from "../lib/cloudinary.js"
 import { prisma } from "../lib/prisma.js"
 import { requireAuth } from "../middleware/auth.js"
+import { getSppgOwnerId, isUuid } from "../lib/user-scope.js"
 
 export const kitchenChecklistRouter = Router()
 
@@ -26,6 +27,74 @@ function getWeekRange(date = new Date()) {
   return { end, start }
 }
 
+function canManageKitchenChecklists(user: { role: string }) {
+  return user.role === "SPPG" || user.role === "SUPER_ADMIN"
+}
+
+type KitchenChecklistRow = {
+  id: string
+  apdPhoto: string
+  alatPhoto: string
+  kebersihanPhoto: string
+  kondisiDapur: string
+  timestamp: Date
+  createdAt: Date
+  updatedAt: Date
+}
+
+async function getKitchenChecklistSppgId(user: {
+  id: string
+  role: string
+  username: string
+}) {
+  if (user.role === "SUPER_ADMIN") {
+    return null
+  }
+
+  if (user.role !== "SPPG") {
+    return "__no_access__"
+  }
+
+  return (
+    (await getSppgOwnerId(user, { createIfMissing: true })) ??
+    "__invalid_sppg__"
+  )
+}
+
+async function findKitchenChecklistForUser(id: string, sppgId: string | null) {
+  const rows = sppgId
+    ? await prisma.$queryRaw<KitchenChecklistRow[]>`
+        SELECT
+          id,
+          apd_photo AS "apdPhoto",
+          alat_photo AS "alatPhoto",
+          kebersihan_photo AS "kebersihanPhoto",
+          kondisi_dapur AS "kondisiDapur",
+          timestamp,
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM "public"."kitchen_checklists"
+        WHERE id = ${id} AND sppg_id::text = ${sppgId}
+        LIMIT 1
+      `
+    : await prisma.$queryRaw<KitchenChecklistRow[]>`
+        SELECT
+          id,
+          apd_photo AS "apdPhoto",
+          alat_photo AS "alatPhoto",
+          kebersihan_photo AS "kebersihanPhoto",
+          kondisi_dapur AS "kondisiDapur",
+          timestamp,
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM "public"."kitchen_checklists"
+        WHERE id = ${id}
+        LIMIT 1
+      `
+
+  return rows[0] ?? null
+}
+
 kitchenChecklistRouter.get("/", async (req, res, next) => {
   try {
     const currentUser = await getCurrentUser(req)
@@ -34,15 +103,43 @@ kitchenChecklistRouter.get("/", async (req, res, next) => {
       return res.status(401).json({ message: "Tidak terautentikasi." })
     }
 
-    const checklists = await prisma.kitchenChecklist.findMany({
-      orderBy: { createdAt: "desc" },
-    })
+    if (!canManageKitchenChecklists(currentUser)) {
+      return res.status(403).json({
+        message: "Hanya SPPG atau Super Admin yang dapat melihat laporan kebersihan.",
+      })
+    }
+
+    const sppgId = await getKitchenChecklistSppgId(currentUser)
+    const checklists = sppgId
+      ? await prisma.$queryRaw<KitchenChecklistRow[]>`
+          SELECT
+            id,
+            apd_photo AS "apdPhoto",
+            alat_photo AS "alatPhoto",
+            kebersihan_photo AS "kebersihanPhoto",
+            kondisi_dapur AS "kondisiDapur",
+            timestamp,
+            created_at AS "createdAt",
+            updated_at AS "updatedAt"
+          FROM "public"."kitchen_checklists"
+          WHERE sppg_id::text = ${sppgId}
+          ORDER BY created_at DESC
+        `
+      : await prisma.kitchenChecklist.findMany({
+          orderBy: { createdAt: "desc" },
+        })
     res.json({ data: checklists })
   } catch (error) {
     const currentUser = await getCurrentUser(req)
 
     if (!currentUser) {
       return res.status(401).json({ message: "Tidak terautentikasi." })
+    }
+
+    if (!canManageKitchenChecklists(currentUser)) {
+      return res.status(403).json({
+        message: "Hanya SPPG atau Super Admin yang dapat mengunggah foto kebersihan.",
+      })
     }
 
     res.json({ data: listFallbackKitchenChecklists() })
@@ -55,6 +152,12 @@ kitchenChecklistRouter.post("/photos", async (req, res, next) => {
 
     if (!currentUser) {
       return res.status(401).json({ message: "Tidak terautentikasi." })
+    }
+
+    if (!canManageKitchenChecklists(currentUser)) {
+      return res.status(403).json({
+        message: "Hanya SPPG atau Super Admin yang dapat membuat laporan kebersihan.",
+      })
     }
 
     const { photo, field } = req.body as {
@@ -89,6 +192,12 @@ kitchenChecklistRouter.post("/", async (req, res, next) => {
       return res.status(401).json({ message: "Tidak terautentikasi." })
     }
 
+    if (!canManageKitchenChecklists(currentUser)) {
+      return res.status(403).json({
+        message: "Hanya SPPG atau Super Admin yang dapat mengubah laporan kebersihan.",
+      })
+    }
+
     const {
       apdPhoto,
       alatPhoto,
@@ -116,16 +225,27 @@ kitchenChecklistRouter.post("/", async (req, res, next) => {
         .json({ message: "Data laporan kebersihan tidak lengkap." })
     }
 
-    const existingWeeklyReport = await prisma.kitchenChecklist.findFirst({
-      where: {
-        timestamp: {
-          gte: currentWeek.start,
-          lt: currentWeek.end,
-        },
-      },
-    })
+    const sppgId = await getKitchenChecklistSppgId(currentUser)
+    const existingWeeklyReport = sppgId
+      ? await prisma.$queryRaw<{ id: string }[]>`
+          SELECT id
+          FROM "public"."kitchen_checklists"
+          WHERE sppg_id::text = ${sppgId}
+            AND timestamp >= ${currentWeek.start}
+            AND timestamp < ${currentWeek.end}
+          LIMIT 1
+        `
+      : await prisma.kitchenChecklist.findMany({
+          where: {
+            timestamp: {
+              gte: currentWeek.start,
+              lt: currentWeek.end,
+            },
+          },
+          take: 1,
+        })
 
-    if (existingWeeklyReport) {
+    if (existingWeeklyReport.length > 0) {
       return res.status(409).json({
         message:
           "Laporan kebersihan minggu ini sudah dibuat. Perubahan hanya bisa dilakukan melalui riwayat.",
@@ -142,12 +262,26 @@ kitchenChecklistRouter.post("/", async (req, res, next) => {
       },
     })
 
+    if (sppgId && isUuid(sppgId)) {
+      await prisma.$executeRaw`
+        UPDATE "public"."kitchen_checklists"
+        SET sppg_id = ${sppgId}::uuid
+        WHERE id = ${checklist.id}
+      `
+    }
+
     res.status(201).json({ data: checklist })
   } catch (error) {
     const currentUser = await getCurrentUser(req)
 
     if (!currentUser) {
       return res.status(401).json({ message: "Tidak terautentikasi." })
+    }
+
+    if (!canManageKitchenChecklists(currentUser)) {
+      return res.status(403).json({
+        message: "Hanya SPPG atau Super Admin yang dapat mengubah laporan kebersihan.",
+      })
     }
 
     const {
@@ -211,6 +345,12 @@ kitchenChecklistRouter.patch("/:id", async (req, res, next) => {
       return res.status(401).json({ message: "Tidak terautentikasi." })
     }
 
+    if (!canManageKitchenChecklists(currentUser)) {
+      return res.status(403).json({
+        message: "Hanya SPPG atau Super Admin yang dapat menghapus laporan kebersihan.",
+      })
+    }
+
     const { apdPhoto, alatPhoto, kebersihanPhoto, kondisiDapur } =
       req.body as {
         apdPhoto?: string
@@ -231,9 +371,11 @@ kitchenChecklistRouter.patch("/:id", async (req, res, next) => {
         .json({ message: "Data laporan kebersihan tidak lengkap." })
     }
 
-    const existingReport = await prisma.kitchenChecklist.findFirst({
-      where: { id: req.params.id },
-    })
+    const sppgId = await getKitchenChecklistSppgId(currentUser)
+    const existingReport = await findKitchenChecklistForUser(
+      req.params.id,
+      sppgId
+    )
 
     if (!existingReport) {
       return res
@@ -307,9 +449,11 @@ kitchenChecklistRouter.delete("/:id", async (req, res, next) => {
       return res.status(401).json({ message: "Tidak terautentikasi." })
     }
 
-    const existingReport = await prisma.kitchenChecklist.findFirst({
-      where: { id: req.params.id },
-    })
+    const sppgId = await getKitchenChecklistSppgId(currentUser)
+    const existingReport = await findKitchenChecklistForUser(
+      req.params.id,
+      sppgId
+    )
 
     if (!existingReport) {
       return res

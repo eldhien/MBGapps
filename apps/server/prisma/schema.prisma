@@ -16,6 +16,7 @@ model User {
   schoolId       String?         @unique @map("school_id") @db.Uuid
   school         School?         @relation("SchoolAccount", fields: [schoolId], references: [id])
   managedSchools School[]        @relation("SppgSchools")
+  drivers        Driver[]        @relation("SppgDrivers")
   petugasBatches BatchProduksi[] @relation("PetugasBatch")
   sekolahBatches BatchSekolah[]  @relation("SekolahBatch")
   createdAt      DateTime        @default(now()) @map("created_at")
@@ -119,10 +120,13 @@ model Driver {
   phone         String?
   vehicleNumber String?         @map("vehicle_number")
   isActive      Boolean         @default(true) @map("is_active")
+  sppgId        String?         @map("sppg_id") @db.Uuid
+  sppg          User?           @relation("SppgDrivers", fields: [sppgId], references: [id])
   batches       BatchProduksi[] @relation("DriverBatch")
   createdAt     DateTime        @default(now()) @map("created_at")
   updatedAt     DateTime        @updatedAt @map("updated_at")
 
+  @@index([sppgId])
   @@map("drivers")
 }
 
@@ -312,10 +316,12 @@ model KitchenChecklist {
   kebersihanPhoto String   @map("kebersihan_photo")
   kondisiDapur    String   @map("kondisi_dapur")
   timestamp       DateTime
+  sppgId          String?  @map("sppg_id") @db.Uuid
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
   @@index([timestamp], map: "kitchen_checklists_timestamp_idx")
+  @@index([sppgId])
   @@map("kitchen_checklists")
 }
 

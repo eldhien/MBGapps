@@ -8,7 +8,12 @@ import {
 } from "../lib/fallback-store.js"
 import { prisma } from "../lib/prisma.js"
 import { requireAuth } from "../middleware/auth.js"
-import { getReporterSchoolId, isUuid } from "../lib/user-scope.js"
+import {
+  getManagedSchoolReportIds,
+  getReporterSchoolId,
+  getSppgOwnerId,
+  isUuid,
+} from "../lib/user-scope.js"
 
 export const foodReportsRouter = Router()
 const reportCategories = new Set<string>(Object.values(ReportCategory))
@@ -52,6 +57,45 @@ async function resolveReporterSchools<T extends { sekolahId: string }>(
   }))
 }
 
+async function getReportSchoolFilter(currentUser: {
+  id: string
+  role: string
+  username: string
+}) {
+  const reporterSchoolId = await getReporterSchoolId(currentUser)
+
+  if (currentUser.role === "SEKOLAH") {
+    return {
+      sekolahId: {
+        in: [currentUser.id, reporterSchoolId].filter(Boolean) as string[],
+      },
+    }
+  }
+
+  if (currentUser.role === "SPPG") {
+    const sppgOwnerId = await getSppgOwnerId(currentUser, {
+      createIfMissing: true,
+    })
+    const schoolReporterIds = await getManagedSchoolReportIds(sppgOwnerId)
+
+    return {
+      sekolahId: {
+        in: schoolReporterIds.length
+          ? schoolReporterIds
+          : ["__no_managed_school__"],
+      },
+    }
+  }
+
+  return {}
+}
+
+function getFallbackSchoolIds(
+  filter: Awaited<ReturnType<typeof getReportSchoolFilter>>
+) {
+  return "sekolahId" in filter ? filter.sekolahId?.in : undefined
+}
+
 foodReportsRouter.get("/", async (req, res, next) => {
   try {
     const currentUser = await getCurrentUser(req)
@@ -60,11 +104,7 @@ foodReportsRouter.get("/", async (req, res, next) => {
       return res.status(401).json({ message: "Tidak terautentikasi." })
     }
 
-    const reporterSchoolId = await getReporterSchoolId(currentUser)
-    const schoolFilter =
-      currentUser.role === "SEKOLAH"
-        ? { sekolahId: { in: [currentUser.id, reporterSchoolId].filter(Boolean) as string[] } }
-        : {}
+    const schoolFilter = await getReportSchoolFilter(currentUser)
 
     const reports = await prisma.foodReport.findMany({
       where: schoolFilter,
@@ -78,9 +118,12 @@ foodReportsRouter.get("/", async (req, res, next) => {
       return res.status(401).json({ message: "Tidak terautentikasi." })
     }
 
+    const fallbackFilter = await getReportSchoolFilter(currentUser)
+    const fallbackSchoolIds = getFallbackSchoolIds(fallbackFilter)
+
     res.json({
-      data: listFallbackFoodReports(
-        currentUser.role === "SEKOLAH" ? currentUser.id : undefined
+      data: listFallbackFoodReports().filter((report) =>
+        fallbackSchoolIds ? fallbackSchoolIds.includes(report.sekolahId) : true
       ),
     })
   }

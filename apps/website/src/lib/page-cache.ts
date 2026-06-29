@@ -2,6 +2,7 @@ export const pageCacheKeys = {
   batches: "batches:list",
   dashboardAnalytics: "dashboard:analytics",
   drivers: "drivers:list",
+  activeDrivers: "drivers:list:active",
   foodReports: "food-reports:list",
   kitchenChecklists: "kitchen-checklists:list",
   productionBatches: "production-batches:list",
@@ -17,17 +18,41 @@ const pageCache = new Map<string, unknown>()
 
 const pageCacheEventName = "mbg:page-cache-updated"
 
+function getCacheScope() {
+  if (typeof window === "undefined") {
+    return "server"
+  }
+
+  const token = window.localStorage.getItem("mbg_session")
+
+  if (!token) {
+    return "anonymous"
+  }
+
+  let hash = 0
+  for (let index = 0; index < token.length; index += 1) {
+    hash = (hash * 31 + token.charCodeAt(index)) >>> 0
+  }
+
+  return `session:${hash.toString(36)}`
+}
+
+function getScopedPageCacheKey(key: string) {
+  return `${getCacheScope()}:${key}`
+}
+
 export function getCachedPageData<T>(key: string) {
-  return pageCache.get(key) as T | undefined
+  return pageCache.get(getScopedPageCacheKey(key)) as T | undefined
 }
 
 export function setCachedPageData<T>(key: string, data: T) {
-  pageCache.set(key, data)
+  const scopedKey = getScopedPageCacheKey(key)
+  pageCache.set(scopedKey, data)
 
   if (typeof window !== "undefined") {
     window.dispatchEvent(
       new CustomEvent(pageCacheEventName, {
-        detail: { data, key },
+        detail: { data, key: scopedKey },
       })
     )
   }
@@ -36,12 +61,13 @@ export function setCachedPageData<T>(key: string, data: T) {
 }
 
 export function clearCachedPageData(key: string) {
-  pageCache.delete(key)
+  const scopedKey = getScopedPageCacheKey(key)
+  pageCache.delete(scopedKey)
 
   if (typeof window !== "undefined") {
     window.dispatchEvent(
       new CustomEvent(pageCacheEventName, {
-        detail: { data: undefined, key },
+        detail: { data: undefined, key: scopedKey },
       })
     )
   }
@@ -55,10 +81,11 @@ export function subscribePageCache<T>(
     return () => {}
   }
 
+  const scopedKey = getScopedPageCacheKey(key)
   const handleCacheUpdate = (event: Event) => {
     const detail = (event as CustomEvent<{ data?: T; key: string }>).detail
 
-    if (detail?.key === key) {
+    if (detail?.key === scopedKey) {
       listener(detail.data)
     }
   }

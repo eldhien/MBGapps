@@ -105,7 +105,7 @@ export function DistributionPage({
   const cachedSchools = getCachedPageData<SchoolAccount[]>(
     pageCacheKeys.schoolAccounts
   )
-  const cachedDrivers = getCachedPageData<Driver[]>(pageCacheKeys.drivers)
+  const cachedDrivers = getCachedPageData<Driver[]>(pageCacheKeys.activeDrivers)
   const [batches, setBatches] = useState<ProductionBatch[]>(
     () => cachedBatches ?? []
   )
@@ -171,18 +171,11 @@ export function DistributionPage({
         (batch) =>
           batch.id === editBatchId ||
           (batch.status !== "DITOLAK" &&
-            getBatchRemainingPortions(
-              batch,
-              distributions,
-              editTarget?.id
-            ) > 0)
+            getBatchRemainingPortions(batch, distributions, editTarget?.id) > 0)
       ),
     [batches, distributions, editBatchId, editTarget?.id]
   )
-  const historyDistributions = useMemo(
-    () => distributions,
-    [distributions]
-  )
+  const historyDistributions = useMemo(() => distributions, [distributions])
   const distributionHistoryTotalPages = Math.max(
     1,
     Math.ceil(historyDistributions.length / DISTRIBUTION_HISTORY_PER_PAGE)
@@ -244,7 +237,7 @@ export function DistributionPage({
         setCachedPageData(pageCacheKeys.productionBatches, batchResponse)
       )
       setDrivers(
-        setCachedPageData(pageCacheKeys.drivers, driverResponse.drivers)
+        setCachedPageData(pageCacheKeys.activeDrivers, driverResponse.drivers)
       )
       setSchools(
         setCachedPageData(pageCacheKeys.schoolAccounts, schoolResponse.schools)
@@ -275,7 +268,9 @@ export function DistributionPage({
       const schoolsCache = getCachedPageData<SchoolAccount[]>(
         pageCacheKeys.schoolAccounts
       )
-      const driversCache = getCachedPageData<Driver[]>(pageCacheKeys.drivers)
+      const driversCache = getCachedPageData<Driver[]>(
+        pageCacheKeys.activeDrivers
+      )
 
       if (batchesCache && distributionsCache && schoolsCache && driversCache) {
         setBatches(batchesCache)
@@ -425,6 +420,10 @@ export function DistributionPage({
   }
 
   function openEditDistribution(distribution: ProductionDistribution) {
+    if (getDistributionStatus(distribution) === "SELESAI") {
+      return
+    }
+
     setEditTarget(distribution)
     setEditBatchId(distribution.batchId)
     setEditDriverId(distribution.batch?.driver?.id ?? "")
@@ -759,8 +758,7 @@ export function DistributionPage({
                 <p
                   className={
                     selectedBatchRequestedPortions >
-                      selectedBatchAvailablePortions &&
-                    batchId
+                      selectedBatchAvailablePortions && batchId
                       ? "mt-1 text-lg font-semibold text-red-600"
                       : "mt-1 text-lg font-semibold text-emerald-600"
                   }
@@ -990,15 +988,17 @@ export function DistributionPage({
                           >
                             <EyeIcon className="mr-1 h-4 w-4" /> Lihat
                           </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="rounded-lg border-[#e3e7ef]"
-                            onClick={() => openEditDistribution(distribution)}
-                          >
-                            <PencilIcon className="mr-1 h-4 w-4" /> Edit
-                          </Button>
+                          {status !== "SELESAI" && status !== "DITOLAK" ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="rounded-lg border-[#e3e7ef]"
+                              onClick={() => openEditDistribution(distribution)}
+                            >
+                              <PencilIcon className="mr-1 h-4 w-4" /> Edit
+                            </Button>
+                          ) : null}
                           <Button
                             type="button"
                             variant="outline"
@@ -1190,8 +1190,7 @@ export function DistributionPage({
                   <p
                     className={
                       editRequestedPortions >
-                        editSelectedBatchAvailablePortions &&
-                      editBatchId
+                        editSelectedBatchAvailablePortions && editBatchId
                         ? "mt-1 text-base font-semibold text-red-600"
                         : "mt-1 text-base font-semibold text-emerald-600"
                     }

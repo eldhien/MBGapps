@@ -32,6 +32,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { TablePagination } from "@/components/ui/table-pagination"
 import { api, type Driver } from "@/lib/api"
 import {
+  clearCachedPageData,
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
@@ -167,6 +168,7 @@ export function DriversPage() {
         setSuccess("Driver berhasil ditambahkan.")
       }
 
+      clearCachedPageData(pageCacheKeys.activeDrivers)
       setIsDialogOpen(false)
       setForm(initialForm)
     } catch (error) {
@@ -199,6 +201,7 @@ export function DriversPage() {
           ? "Driver berhasil diaktifkan."
           : "Driver berhasil dinonaktifkan."
       )
+      clearCachedPageData(pageCacheKeys.activeDrivers)
     } catch (error) {
       setError(
         error instanceof Error ? error.message : "Gagal mengubah status driver."
@@ -221,6 +224,7 @@ export function DriversPage() {
         )
       )
       setDeleteTarget(null)
+      clearCachedPageData(pageCacheKeys.activeDrivers)
       setSuccess("Driver berhasil dihapus.")
     } catch (error) {
       setError(

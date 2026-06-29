@@ -82,6 +82,7 @@ export function FoodReportsPage({
   const { profile } = useAuth()
   const [searchParams] = useSearchParams()
   const prefilledBatchId = searchParams.get("batchId") ?? ""
+  const selectedReportId = searchParams.get("reportId") ?? ""
   const cachedReports = getCachedPageData<FoodReport[]>(
     pageCacheKeys.foodReports
   )
@@ -122,6 +123,28 @@ export function FoodReportsPage({
       setForm((current) => ({ ...current, batchId: prefilledBatchId }))
     }
   }, [prefilledBatchId])
+
+  useEffect(() => {
+    if (!selectedReportId || mode !== "history") {
+      return
+    }
+
+    const reportIndex = reports.findIndex(
+      (report) => report.id === selectedReportId
+    )
+
+    if (reportIndex < 0) {
+      return
+    }
+
+    setCurrentPage(Math.floor(reportIndex / REPORTS_PER_PAGE) + 1)
+
+    window.setTimeout(() => {
+      document
+        .getElementById(`food-report-${selectedReportId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" })
+    }, 80)
+  }, [mode, reports, selectedReportId])
 
   const loadData = async (force = false) => {
     let usedCache = false
@@ -509,7 +532,12 @@ export function FoodReportsPage({
                         return (
                           <tr
                             key={report.id}
-                            className="border-b border-[#edf0f4] last:border-0"
+                            id={`food-report-${report.id}`}
+                            className={`border-b border-[#edf0f4] last:border-0 ${
+                              report.id === selectedReportId
+                                ? "bg-[#eef2ff] ring-1 ring-inset ring-[#0528f2]/20"
+                                : ""
+                            }`}
                           >
                             <td className="px-5 py-4">
                               <p className="font-semibold text-[#111827]">

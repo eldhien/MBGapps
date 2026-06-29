@@ -39,16 +39,6 @@ type SchoolDistributionWithRelations = Prisma.BatchDistributionSchoolGetPayload<
   }
 }>
 
-function getTodayRange() {
-  const start = new Date()
-  start.setHours(0, 0, 0, 0)
-
-  const end = new Date()
-  end.setHours(23, 59, 59, 999)
-
-  return { end, start }
-}
-
 function toSchoolDistributionResponse(item: SchoolDistributionWithRelations) {
   return {
     id: item.id,
@@ -93,11 +83,6 @@ schoolDistributionsRouter.get("/", async (req, res, next) => {
       })
     }
 
-    const schoolRecord = await prisma.school.findUnique({
-      where: { id: schoolId },
-      select: { sppgId: true },
-    })
-
     const distributions = await prisma.batchDistributionSchool.findMany({
       where: { schoolId },
       include: {
@@ -116,58 +101,8 @@ schoolDistributionsRouter.get("/", async (req, res, next) => {
       orderBy: { createdAt: "desc" },
     })
 
-    const distributedBatchIds = new Set(
-      distributions.map((distribution) => distribution.distribution.batchId)
-    )
-    const { end, start } = getTodayRange()
-    const undistributedBatches = schoolRecord?.sppgId
-      ? await prisma.batchProduksi.findMany({
-          where: {
-            id: { notIn: [...distributedBatchIds] },
-            OR: [{ petugasId: schoolRecord.sppgId }, { petugasId: null }],
-            createdAt: {
-              gte: start,
-              lte: end,
-            },
-          },
-          include: {
-            driver: true,
-            foto: true,
-            menu: true,
-          },
-          orderBy: { createdAt: "desc" },
-        })
-      : []
-
-    const virtualDistributions = undistributedBatches.map((batch) => ({
-      id: `virtual-${batch.id}`,
-      jumlahPorsi: batch.totalPorsi,
-      status: "MENUNGGU",
-      receivedAt: null,
-      rejectedReason: null,
-      buktiTerimaFotoUrl: null,
-      distribution: {
-        id: `virtual-dist-${batch.id}`,
-        waktuKirim: null,
-        status: "DRAFT",
-        fotoDikemasUrl: null,
-      },
-      batch: {
-        id: batch.id,
-        totalPorsi: batch.totalPorsi,
-        status: batch.status,
-        createdAt: batch.createdAt?.toISOString() ?? null,
-        menu: batch.menu,
-        driver: batch.driver,
-        foto: batch.foto,
-      },
-    }))
-
     return res.json({
-      distributions: [
-        ...distributions.map(toSchoolDistributionResponse),
-        ...virtualDistributions,
-      ],
+      distributions: distributions.map(toSchoolDistributionResponse),
     })
   } catch (error) {
     next(error)
@@ -287,6 +222,15 @@ schoolDistributionsRouter.patch(
               )
             ? BatchDistributionStatus.SELESAI
             : item.distribution.status
+        const nextBatchStatus = statuses.includes(
+          BatchDistributionSchoolStatus.DITOLAK
+        )
+          ? "DITOLAK"
+          : statuses.every(
+                (value) => value === BatchDistributionSchoolStatus.DITERIMA
+              )
+            ? "DITERIMA"
+            : "TERKIRIM"
 
         if (nextDistributionStatus !== item.distribution.status) {
           await tx.batchDistribution.update({
@@ -297,12 +241,7 @@ schoolDistributionsRouter.patch(
 
         await tx.batchProduksi.update({
           where: { id: item.distribution.batchId },
-          data: {
-            status:
-              nextSchoolStatus === BatchDistributionSchoolStatus.DITERIMA
-                ? "DITERIMA"
-                : "DITOLAK",
-          },
+          data: { status: nextBatchStatus },
         })
 
         await tx.schoolProgress.updateMany({

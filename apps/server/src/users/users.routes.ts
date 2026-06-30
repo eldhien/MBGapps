@@ -3,8 +3,9 @@ import { Router } from "express"
 import { UserRole } from "@prisma/client"
 
 import { listDemoUsers } from "../auth/demo-users.js"
+import { ensureSuperadminUser } from "../auth/system-user.js"
 import { prisma } from "../lib/prisma.js"
-import { requireRoles } from "../lib/user-scope.js"
+import { isUuid, requireRoles } from "../lib/user-scope.js"
 
 export const usersRouter = Router()
 
@@ -28,6 +29,12 @@ function normalizeUsername(username?: string) {
   return username?.trim().toLowerCase()
 }
 
+function isSystemUsername(username?: string | null) {
+  if (!username) return false
+
+  return listDemoUsers().some((user) => user.username === username)
+}
+
 usersRouter.get("/", async (req, res, next) => {
   try {
     const auth = await requireRoles(
@@ -43,6 +50,8 @@ usersRouter.get("/", async (req, res, next) => {
     let users
 
     try {
+      await ensureSuperadminUser()
+
       users = await prisma.user.findMany({
         orderBy: { createdAt: "desc" },
       })
@@ -96,6 +105,12 @@ usersRouter.post("/", async (req, res, next) => {
       return res.status(400).json({ message: "Role tidak valid." })
     }
 
+    if (isSystemUsername(normalizedUsername)) {
+      return res.status(409).json({
+        message: "Username digunakan oleh akun sistem.",
+      })
+    }
+
     const passwordHash = await bcrypt.hash(password, 12)
     const user = await prisma.user.create({
       data: {
@@ -107,6 +122,15 @@ usersRouter.post("/", async (req, res, next) => {
 
     return res.status(201).json({ user: toUserResponse(user) })
   } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "P2002"
+    ) {
+      return res.status(409).json({ message: "Username sudah digunakan." })
+    }
+
     next(error)
   }
 })
@@ -145,6 +169,33 @@ usersRouter.patch("/:id", async (req, res, next) => {
       return res.status(400).json({ message: "Password minimal 6 karakter." })
     }
 
+    if (!isUuid(req.params.id)) {
+      return res
+        .status(400)
+        .json({ message: "Akun sistem tidak dapat diedit dari database." })
+    }
+
+    if (normalizedUsername && isSystemUsername(normalizedUsername)) {
+      return res.status(409).json({
+        message: "Username digunakan oleh akun sistem.",
+      })
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: { username: true },
+    })
+
+    if (!existingUser) {
+      return res.status(404).json({ message: "Akun tidak ditemukan." })
+    }
+
+    if (isSystemUsername(existingUser.username)) {
+      return res
+        .status(400)
+        .json({ message: "Akun sistem tidak dapat diedit." })
+    }
+
     const user = await prisma.user.update({
       where: { id: req.params.id },
       data: {
@@ -156,6 +207,15 @@ usersRouter.patch("/:id", async (req, res, next) => {
 
     return res.json({ user: toUserResponse(user) })
   } catch (error) {
+    if (
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "P2002"
+    ) {
+      return res.status(409).json({ message: "Username sudah digunakan." })
+    }
+
     next(error)
   }
 })
@@ -178,8 +238,56 @@ usersRouter.delete("/:id", async (req, res, next) => {
         .json({ message: "Kamu tidak dapat menghapus akun sendiri." })
     }
 
-    await prisma.user.delete({
+    if (!isUuid(req.params.id)) {
+      return res
+        .status(400)
+        .json({ message: "Akun sistem tidak dapat dihapus dari database." })
+    }
+
+    const user = await prisma.user.findUnique({
       where: { id: req.params.id },
+      select: { id: true, role: true, username: true },
+    })
+
+    if (!user) {
+      return res.status(404).json({ message: "Akun tidak ditemukan." })
+    }
+
+    if (isSystemUsername(user.username)) {
+      return res
+        .status(400)
+        .json({ message: "Akun sistem tidak dapat dihapus." })
+    }
+
+    const [
+      managedSchoolsCount,
+      productionBatchesCount,
+      schoolBatchesCount,
+    ] = await Promise.all([
+      prisma.school.count({ where: { sppgId: user.id } }),
+      prisma.batchProduksi.count({ where: { petugasId: user.id } }),
+      prisma.batchSekolah.count({ where: { sekolahId: user.id } }),
+    ])
+    const blockers = [
+      managedSchoolsCount
+        ? `${managedSchoolsCount.toLocaleString("id-ID")} sekolah`
+        : null,
+      productionBatchesCount
+        ? `${productionBatchesCount.toLocaleString("id-ID")} batch produksi`
+        : null,
+      schoolBatchesCount
+        ? `${schoolBatchesCount.toLocaleString("id-ID")} batch sekolah`
+        : null,
+    ].filter(Boolean)
+
+    if (blockers.length) {
+      return res.status(409).json({
+        message: `Akun ${user.username} tidak dapat dihapus karena masih terhubung dengan ${blockers.join(", ")}. Pindahkan atau hapus data terkait terlebih dahulu.`,
+      })
+    }
+
+    await prisma.user.delete({
+      where: { id: user.id },
     })
 
     return res.status(204).send()

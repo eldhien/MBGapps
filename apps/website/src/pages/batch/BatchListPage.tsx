@@ -519,7 +519,7 @@ export function BatchListPage({
           ) : null}
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="table-scroll-area">
           <table className="w-full min-w-245 text-sm">
             <thead>
               <tr className="border-b border-[#edf0f4] bg-[#fcfcfd] text-left text-xs text-muted-foreground">

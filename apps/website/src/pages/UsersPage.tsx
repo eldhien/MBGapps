@@ -68,6 +68,12 @@ const initialForm: FormState = {
   username: "",
 }
 
+function isDatabaseUserId(id: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    id
+  )
+}
+
 export function UsersPage() {
   const { profile } = useAuth()
   const cachedUsers = getCachedPageData<ManagedUser[]>(pageCacheKeys.users)
@@ -124,10 +130,9 @@ export function UsersPage() {
     if (usersCache) {
       setUsers(usersCache)
       setIsLoading(false)
-      return
     }
 
-    setIsLoading(true)
+    setIsLoading(!usersCache)
     setError(null)
 
     try {
@@ -341,7 +346,7 @@ export function UsersPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="table-scroll-area">
           <table className="w-full min-w-210 text-sm">
             <thead>
               <tr className="border-b border-[#edf0f4] bg-[#fcfcfd] text-left text-xs text-muted-foreground">
@@ -378,61 +383,76 @@ export function UsersPage() {
                   ))
                 : null}
               {!isLoading &&
-                paginatedUsers.map((user) => (
-                  <tr
-                    key={user.id}
-                    className="border-b border-[#edf0f4] last:border-0 hover:bg-[#fcfcfd]"
-                  >
-                    <td className="px-5 py-4">
-                      <div className="min-w-0">
-                        <p className="truncate font-semibold">
-                          {user.username}
-                        </p>
-                      </div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600 ring-1 ring-emerald-100">
-                        {formatRole(user.role)}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-muted-foreground">
-                      {new Date(user.createdAt).toLocaleDateString("id-ID")}
-                    </td>
-                    <td className="px-5 py-4 text-muted-foreground">
-                      {new Date(user.createdAt).toLocaleDateString("id-ID")}
-                    </td>
-                    <td className="px-5 py-4 text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            className="text-muted-foreground hover:text-[#0528f2]"
-                          >
-                            <MoreVerticalIcon className="size-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-32">
-                          <DropdownMenuItem
-                            onSelect={() => openEditDialog(user)}
-                          >
-                            <PencilIcon />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            variant="destructive"
-                            disabled={user.id === profile.id}
-                            onSelect={() => setDeleteTarget(user)}
-                          >
-                            <Trash2Icon />
-                            Hapus
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </td>
-                  </tr>
-                ))}
+                paginatedUsers.map((user) => {
+                  const isDatabaseUser = isDatabaseUserId(user.id)
+                  const isSystemUser = user.username === "superadmin"
+
+                  return (
+                    <tr
+                      key={user.id}
+                      className="border-b border-[#edf0f4] last:border-0 hover:bg-[#fcfcfd]"
+                    >
+                      <td className="px-5 py-4">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold">
+                            {user.username}
+                          </p>
+                          {isSystemUser ? (
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              Akun sistem
+                            </p>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-600 ring-1 ring-emerald-100">
+                          {formatRole(user.role)}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-muted-foreground">
+                        {new Date(user.createdAt).toLocaleDateString("id-ID")}
+                      </td>
+                      <td className="px-5 py-4 text-muted-foreground">
+                        {new Date(user.createdAt).toLocaleDateString("id-ID")}
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-muted-foreground hover:text-[#0528f2]"
+                            >
+                              <MoreVerticalIcon className="size-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-32">
+                            <DropdownMenuItem
+                              disabled={!isDatabaseUser || isSystemUser}
+                              onSelect={() => openEditDialog(user)}
+                            >
+                              <PencilIcon />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              variant="destructive"
+                              disabled={
+                                !isDatabaseUser ||
+                                isSystemUser ||
+                                user.id === profile.id
+                              }
+                              onSelect={() => setDeleteTarget(user)}
+                            >
+                              <Trash2Icon />
+                              Hapus
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  )
+                })}
               {!isLoading && filteredUsers.length === 0 ? (
                 <tr>
                   <td

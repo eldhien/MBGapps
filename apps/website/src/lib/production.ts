@@ -17,6 +17,18 @@ export function toDateTimeLocal(value?: string | null) {
   return date.toISOString().slice(0, 16)
 }
 
+export function dateTimeLocalToISOString(value?: string | null) {
+  if (!value) return undefined
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return undefined
+  }
+
+  return date.toISOString()
+}
+
 export function formatDistributionId(distribution: ProductionDistribution) {
   const date = new Date(distribution.createdAt || distribution.waktuKirim || "")
   const datePart = Number.isNaN(date.getTime())

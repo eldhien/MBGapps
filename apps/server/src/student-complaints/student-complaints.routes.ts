@@ -22,6 +22,24 @@ export const studentComplaintsRouter = Router()
 
 studentComplaintsRouter.use(requireAuth)
 
+const JAKARTA_UTC_OFFSET = "+07:00"
+const HAS_TIME_ZONE_SUFFIX = /(?:z|[+-]\d{2}:?\d{2})$/i
+
+function parseIncidentDate(value?: string | null) {
+  const normalizedValue = value?.trim()
+
+  if (!normalizedValue) {
+    return null
+  }
+
+  const dateValue = HAS_TIME_ZONE_SUFFIX.test(normalizedValue)
+    ? normalizedValue
+    : `${normalizedValue}${JAKARTA_UTC_OFFSET}`
+  const date = new Date(dateValue)
+
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
 async function resolveReporterSchools<T extends { sekolahId: string }>(
   complaints: T[]
 ) {
@@ -292,7 +310,7 @@ studentComplaintsRouter.post("/", async (req, res, next) => {
       currentUser.role === "SEKOLAH"
         ? reporterSchoolId
         : sekolahId?.trim() || currentUser.id
-    const incidentDate = waktuKejadian ? new Date(waktuKejadian) : null
+    const incidentDate = parseIncidentDate(waktuKejadian)
 
     if (
       !jumlahSiswa ||
@@ -341,7 +359,7 @@ studentComplaintsRouter.post("/", async (req, res, next) => {
       currentUser.role === "SEKOLAH"
         ? reporterSchoolId
         : sekolahId?.trim() || currentUser.id
-    const incidentDate = waktuKejadian ? new Date(waktuKejadian) : null
+    const incidentDate = parseIncidentDate(waktuKejadian)
 
     if (
       !jumlahSiswa ||

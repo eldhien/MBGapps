@@ -47,10 +47,12 @@ import {
   subscribePageCache,
 } from "@/lib/page-cache"
 import {
+  dateTimeLocalToISOString,
   formatDistributionId,
   getBatchRemainingPortions,
   getCurrentDateTimeLocal,
   getDistributionStatus,
+  toDateTimeLocal,
 } from "@/lib/production"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 
@@ -429,7 +431,7 @@ export function DistributionPage({
     setEditDriverId(distribution.batch?.driver?.id ?? "")
     setEditWaktuKirim(
       distribution.waktuKirim
-        ? new Date(distribution.waktuKirim).toISOString().slice(0, 16)
+        ? toDateTimeLocal(distribution.waktuKirim)
         : getCurrentDateTimeLocal()
     )
     setEditSchoolRows(
@@ -475,7 +477,7 @@ export function DistributionPage({
         driverId,
         schools: payloadSchools,
         status: "DIKIRIM",
-        waktuKirim,
+        waktuKirim: dateTimeLocalToISOString(waktuKirim),
       })
 
       setDistributions((current) =>
@@ -557,7 +559,7 @@ export function DistributionPage({
         batchId: editBatchId,
         driverId: editDriverId,
         schools: payloadSchools,
-        waktuKirim: editWaktuKirim,
+        waktuKirim: dateTimeLocalToISOString(editWaktuKirim),
       })
 
       setDistributions((current) =>

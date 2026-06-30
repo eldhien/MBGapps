@@ -7,6 +7,23 @@ import { getCurrentSchoolId } from "../lib/user-scope.js"
 
 export const batchesRouter = Router()
 const batchStatuses = new Set<string>(Object.values(LegacyBatchStatus))
+const JAKARTA_UTC_OFFSET = "+07:00"
+const HAS_TIME_ZONE_SUFFIX = /(?:z|[+-]\d{2}:?\d{2})$/i
+
+function parseJakartaDate(value?: string | null) {
+  const normalizedValue = value?.trim()
+
+  if (!normalizedValue) {
+    return null
+  }
+
+  const dateValue = HAS_TIME_ZONE_SUFFIX.test(normalizedValue)
+    ? normalizedValue
+    : `${normalizedValue}${JAKARTA_UTC_OFFSET}`
+  const date = new Date(dateValue)
+
+  return Number.isNaN(date.getTime()) ? null : date
+}
 
 type RawSchoolBatch = {
   batch_id: string
@@ -106,11 +123,13 @@ batchesRouter.post("/", async (req, res, next) => {
         sppgId?: string
       }
 
-    if (!namaMenu || !jumlahPorsi || !komposisi || !waktuProduksi) {
+    const productionDate = parseJakartaDate(waktuProduksi)
+
+    if (!namaMenu || !jumlahPorsi || !komposisi || !productionDate) {
       return res.status(400).json({ message: "Data batch tidak lengkap." })
     }
 
-    const batchIdUnik = `MBG-${new Date(waktuProduksi).toISOString().slice(0, 10).replace(/-/g, "/")}-${Date.now().toString().slice(-6)}`
+    const batchIdUnik = `MBG-${productionDate.toISOString().slice(0, 10).replace(/-/g, "/")}-${Date.now().toString().slice(-6)}`
 
     const batch = await prisma.batch.create({
       data: {
@@ -118,7 +137,7 @@ batchesRouter.post("/", async (req, res, next) => {
         namaMenu,
         jumlahPorsi,
         komposisi,
-        waktuProduksi: new Date(waktuProduksi),
+        waktuProduksi: productionDate,
         driverId,
         photoUrl,
         sppgId,

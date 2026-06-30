@@ -30,11 +30,28 @@ type BatchSchoolPayload = {
 }
 
 const komposisiCategories = new Set<string>(Object.values(KategoriKomposisi))
+const JAKARTA_UTC_OFFSET = "+07:00"
+const HAS_TIME_ZONE_SUFFIX = /(?:z|[+-]\d{2}:?\d{2})$/i
 
 function normalizeKomposisiCategory(value?: string | null) {
   return value && komposisiCategories.has(value)
     ? (value as KategoriKomposisi)
     : null
+}
+
+function parseJakartaDate(value?: string | null) {
+  const normalizedValue = value?.trim()
+
+  if (!normalizedValue) {
+    return null
+  }
+
+  const dateValue = HAS_TIME_ZONE_SUFFIX.test(normalizedValue)
+    ? normalizedValue
+    : `${normalizedValue}${JAKARTA_UTC_OFFSET}`
+  const date = new Date(dateValue)
+
+  return Number.isNaN(date.getTime()) ? null : date
 }
 
 async function resolveMenuId(menuId?: string, namaMenu?: string) {
@@ -336,8 +353,8 @@ export const createBatch = async (req: Request, res: Response) => {
             id: batchId,
             menuId: resolvedMenuId,
             totalPorsi: parsedTotalPorsi,
-            waktuMulai: waktuMulai ? new Date(waktuMulai) : null,
-            waktuSelesai: waktuSelesai ? new Date(waktuSelesai) : null,
+            waktuMulai: parseJakartaDate(waktuMulai),
+            waktuSelesai: parseJakartaDate(waktuSelesai),
             petugasId:
               currentUser.role === UserRole.SPPG
                 ? ownerSppgId
@@ -467,11 +484,11 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
     }
 
     if (typeof waktuMulai !== "undefined") {
-      data.waktuMulai = waktuMulai ? new Date(waktuMulai) : null
+      data.waktuMulai = parseJakartaDate(waktuMulai)
     }
 
     if (typeof waktuSelesai !== "undefined") {
-      data.waktuSelesai = waktuSelesai ? new Date(waktuSelesai) : null
+      data.waktuSelesai = parseJakartaDate(waktuSelesai)
     }
 
     const resolvedMenuId = await resolveMenuId(undefined, namaMenu)

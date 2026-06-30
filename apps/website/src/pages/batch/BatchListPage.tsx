@@ -35,6 +35,7 @@ import {
   subscribePageCache,
 } from "@/lib/page-cache"
 import {
+  dateTimeLocalToISOString,
   getBatchRemainingPortions,
   getLatestFoodPhotoUrl,
   toDateTimeLocal,
@@ -360,8 +361,8 @@ export function BatchListPage({
       let updated = await api.productionBatches.update(editTarget.id, {
         namaMenu: editForm.namaMenu.trim(),
         totalPorsi: Number(editForm.totalPorsi),
-        waktuMulai: editForm.waktuMulai || undefined,
-        waktuSelesai: editForm.waktuSelesai || undefined,
+        waktuMulai: dateTimeLocalToISOString(editForm.waktuMulai),
+        waktuSelesai: dateTimeLocalToISOString(editForm.waktuSelesai),
         varian: [
           {
             namaVarian: "Utama",

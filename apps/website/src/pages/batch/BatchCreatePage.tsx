@@ -7,6 +7,7 @@ import {
   pageCacheKeys,
   setCachedPageData,
 } from "@/lib/page-cache"
+import { dateTimeLocalToISOString } from "@/lib/production"
 import { DashboardShell } from "@/pages/components/DashboardShell"
 import { CheckCircle2Icon, ImageIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { useMemo, useState } from "react"
@@ -68,8 +69,8 @@ export function BatchCreatePage() {
       const result = await api.productionBatches.create({
         namaMenu: form.namaMenu.trim(),
         totalPorsi,
-        waktuMulai: form.waktuMulai || undefined,
-        waktuSelesai: form.waktuSelesai || undefined,
+        waktuMulai: dateTimeLocalToISOString(form.waktuMulai),
+        waktuSelesai: dateTimeLocalToISOString(form.waktuSelesai),
         varian: [
           {
             namaVarian: "Utama",

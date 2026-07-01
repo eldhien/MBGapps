@@ -35,11 +35,12 @@ export function NavMain({
   }[]
 }) {
   const location = useLocation()
-  const { isMobile, setOpenMobile } = useSidebar()
+  const { isMobile, setOpenMobile, state } = useSidebar()
   const menuButtonClass =
     "h-9 rounded-lg px-2.5 text-[13px] font-medium text-sidebar-foreground/62 hover:bg-white hover:text-[#0528f2] hover:shadow-[0_8px_20px_rgba(15,23,42,0.05)] data-[active=true]:bg-white data-[active=true]:text-[#0528f2] data-[active=true]:shadow-[0_10px_24px_rgba(15,23,42,0.08)] group-data-[collapsible=icon]:mx-auto group-data-[collapsible=icon]:size-9! group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:rounded-xl group-data-[collapsible=icon]:p-0! [&_svg]:text-current"
   const subButtonClass =
     "h-8 rounded-lg px-2 text-[12px] text-sidebar-foreground/55 hover:bg-white hover:text-[#0528f2] data-active:bg-white data-active:text-[#0528f2] data-active:shadow-[0_8px_20px_rgba(15,23,42,0.06)] [&>svg]:!text-current [&>svg]:!stroke-current [&_svg]:!text-current [&_svg]:!stroke-current"
+  const isIconMode = !isMobile && state === "collapsed"
 
   return (
     <SidebarGroup className="p-0">
@@ -59,6 +60,35 @@ export function NavMain({
             Boolean(children?.some((child) => child.url === location.pathname))
 
           if (children?.length) {
+            if (isIconMode) {
+              const activeChild = children.find(
+                (child) => child.url === location.pathname
+              )
+              const collapsedTarget =
+                activeChild?.url ??
+                (item.url === "/master-data"
+                  ? children[0]?.url
+                  : item.url) ??
+                children[0]?.url ??
+                "#"
+
+              return (
+                <SidebarMenuItem key={item.title}>
+                  <SidebarMenuButton
+                    asChild
+                    tooltip={item.title}
+                    isActive={isActive}
+                    className={menuButtonClass}
+                  >
+                    <Link to={collapsedTarget}>
+                      {item.icon}
+                      <span className="sr-only">{item.title}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )
+            }
+
             return (
               <Collapsible
                 key={item.title}

@@ -3,7 +3,7 @@ import {
   SidebarProvider,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { AppSidebar } from "@/components/app-sidebar"
+import { AppSidebar } from "@/components/layout/AppSidebar"
 import { AlertToast } from "@/components/ui/alert-toast"
 import { useAuth } from "@/features/auth/AuthProvider"
 import {
@@ -11,7 +11,7 @@ import {
   type BatchSummary,
   type DashboardTopbarData,
   type FoodReport,
-} from "@/lib/api"
+} from "@/services/api"
 import { cn } from "@/lib/utils"
 import {
   BellIcon,

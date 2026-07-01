@@ -2,14 +2,14 @@ import { AlertToast } from "@/components/ui/alert-toast"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TablePagination } from "@/components/ui/table-pagination"
-import { api, type BatchSummary } from "@/lib/api"
+import { api, type BatchSummary } from "@/services/api"
 import {
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
   subscribePageCache,
 } from "@/lib/page-cache"
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 import { FlagIcon } from "lucide-react"
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"

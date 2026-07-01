@@ -9,15 +9,15 @@ import type {
   FoodReport,
   FoodReportCategory,
   SchoolAccount,
-} from "@/lib/api"
+} from "@/services/api"
 import { useAuth } from "@/features/auth/AuthProvider"
-import { api } from "@/lib/api"
+import { api } from "@/services/api"
 import {
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
 } from "@/lib/page-cache"
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 import {
   AlertTriangleIcon,
   ClockIcon,

@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs"
 import { Prisma, UserRole } from "@prisma/client"
 import { Router } from "express"
 
-import { prisma } from "../lib/prisma.js"
+import { prisma } from "../db/prisma.js"
 import { getSppgOwnerId, isUuid, requireRoles } from "../lib/user-scope.js"
 
 export const schoolAccountsRouter = Router()

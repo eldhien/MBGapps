@@ -1,6 +1,7 @@
 import { Request, Response } from "express"
 
-import { prisma } from "../lib/prisma.js"
+import { logger } from "../config/logger.js"
+import { prisma } from "../db/prisma.js"
 
 export const getMenus = async (req: Request, res: Response) => {
   try {
@@ -9,7 +10,7 @@ export const getMenus = async (req: Request, res: Response) => {
     })
     res.json(menus)
   } catch (error) {
-    console.error(error)
+    logger.error("Menu controller error.", error)
     res.status(500).json({ message: "Failed to fetch menus" })
   }
 }
@@ -27,7 +28,7 @@ export const createMenu = async (req: Request, res: Response): Promise<void> => 
     })
     res.status(201).json(menu)
   } catch (error) {
-    console.error(error)
+    logger.error("Menu controller error.", error)
     res.status(500).json({ message: "Failed to create menu" })
   }
 }

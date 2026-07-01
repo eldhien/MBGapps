@@ -47,7 +47,7 @@ const comingSoonPages = navigationPages.filter(
   (page) => !implementedPaths.has(page.path)
 )
 
-export function App() {
+export function AppRouter() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
@@ -287,4 +287,4 @@ export function App() {
   )
 }
 
-export default App
+export default AppRouter

@@ -2,6 +2,10 @@ import { Request, Response, NextFunction } from "express"
 
 import { getCurrentUser } from "../auth/session.js"
 
+type AuthenticatedRequest = Request & {
+  user?: Awaited<ReturnType<typeof getCurrentUser>>
+}
+
 export async function requireAuth(
   req: Request,
   res: Response,
@@ -14,8 +18,8 @@ export async function requireAuth(
       return res.status(401).json({ message: "Tidak terautentikasi." })
     }
 
-    ;(req as unknown as { user?: Awaited<ReturnType<typeof getCurrentUser>> }).user =
-      user
+    const authenticatedRequest = req as AuthenticatedRequest
+    authenticatedRequest.user = user
 
     return next()
   } catch {

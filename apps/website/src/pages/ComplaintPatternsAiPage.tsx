@@ -21,14 +21,14 @@ import type {
   ComplaintAnalysisPeriod,
   ComplaintDangerCategory,
   ComplaintTrendStatus,
-} from "@/lib/api"
-import { api } from "@/lib/api"
+} from "@/services/api"
+import { api } from "@/services/api"
 import {
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
 } from "@/lib/page-cache"
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 
 const periodOptions = [
   { label: "24 Jam", value: "24h" },

@@ -9,36 +9,19 @@ import {
   createFallbackStudentComplaint,
   listFallbackStudentComplaints,
 } from "../lib/fallback-store.js"
-import { prisma } from "../lib/prisma.js"
-import { requireAuth } from "../middleware/auth.js"
+import { prisma } from "../db/prisma.js"
+import { requireAuth } from "../middlewares/auth.middleware.js"
 import {
   getManagedSchoolReportIds,
   getReporterSchoolId,
   getSppgOwnerId,
   isUuid,
 } from "../lib/user-scope.js"
+import { parseJakartaDate } from "../utils/date.js"
 
 export const studentComplaintsRouter = Router()
 
 studentComplaintsRouter.use(requireAuth)
-
-const JAKARTA_UTC_OFFSET = "+07:00"
-const HAS_TIME_ZONE_SUFFIX = /(?:z|[+-]\d{2}:?\d{2})$/i
-
-function parseIncidentDate(value?: string | null) {
-  const normalizedValue = value?.trim()
-
-  if (!normalizedValue) {
-    return null
-  }
-
-  const dateValue = HAS_TIME_ZONE_SUFFIX.test(normalizedValue)
-    ? normalizedValue
-    : `${normalizedValue}${JAKARTA_UTC_OFFSET}`
-  const date = new Date(dateValue)
-
-  return Number.isNaN(date.getTime()) ? null : date
-}
 
 async function resolveReporterSchools<T extends { sekolahId: string }>(
   complaints: T[]
@@ -310,7 +293,7 @@ studentComplaintsRouter.post("/", async (req, res, next) => {
       currentUser.role === "SEKOLAH"
         ? reporterSchoolId
         : sekolahId?.trim() || currentUser.id
-    const incidentDate = parseIncidentDate(waktuKejadian)
+    const incidentDate = parseJakartaDate(waktuKejadian)
 
     if (
       !jumlahSiswa ||
@@ -359,7 +342,7 @@ studentComplaintsRouter.post("/", async (req, res, next) => {
       currentUser.role === "SEKOLAH"
         ? reporterSchoolId
         : sekolahId?.trim() || currentUser.id
-    const incidentDate = parseIncidentDate(waktuKejadian)
+    const incidentDate = parseJakartaDate(waktuKejadian)
 
     if (
       !jumlahSiswa ||

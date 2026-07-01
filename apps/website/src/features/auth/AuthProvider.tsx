@@ -8,7 +8,7 @@ import {
   useState,
 } from "react"
 
-import { api, clearAccessToken, getAccessToken } from "@/lib/api"
+import { api, clearAccessToken, getAccessToken } from "@/services/api"
 import type { UserProfile } from "./types"
 
 type AuthContextValue = {

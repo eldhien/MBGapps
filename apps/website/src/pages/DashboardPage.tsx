@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState } from "react"
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/features/auth/AuthProvider"
-import { api, type DashboardAnalytics } from "@/lib/api"
+import { api, type DashboardAnalytics } from "@/services/api"
 import {
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
 } from "@/lib/page-cache"
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 import {
   AlertTriangleIcon,
   CheckCircle2Icon,

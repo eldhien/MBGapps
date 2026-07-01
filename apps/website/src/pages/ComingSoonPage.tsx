@@ -1,4 +1,4 @@
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 
 export function ComingSoonPage({
   features,

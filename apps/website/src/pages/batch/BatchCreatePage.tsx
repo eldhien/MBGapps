@@ -1,14 +1,14 @@
 import { AlertToast } from "@/components/ui/alert-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { api } from "@/lib/api"
+import { api } from "@/services/api"
 import {
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
 } from "@/lib/page-cache"
 import { dateTimeLocalToISOString } from "@/lib/production"
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 import { CheckCircle2Icon, ImageIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"

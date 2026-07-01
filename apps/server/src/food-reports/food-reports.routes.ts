@@ -6,8 +6,8 @@ import {
   createFallbackFoodReport,
   listFallbackFoodReports,
 } from "../lib/fallback-store.js"
-import { prisma } from "../lib/prisma.js"
-import { requireAuth } from "../middleware/auth.js"
+import { prisma } from "../db/prisma.js"
+import { requireAuth } from "../middlewares/auth.middleware.js"
 import {
   getManagedSchoolReportIds,
   getReporterSchoolId,

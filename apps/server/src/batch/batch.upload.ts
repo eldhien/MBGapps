@@ -7,9 +7,9 @@ import {
   fileBufferToDataUrl,
   uploadImageToCloudinary,
 } from "../lib/cloudinary.js"
-import { prisma } from "../lib/prisma.js"
+import { prisma } from "../db/prisma.js"
 import { getSppgOwnerId } from "../lib/user-scope.js"
-import { requireAuth } from "../middleware/auth.js"
+import { requireAuth } from "../middlewares/auth.middleware.js"
 
 export const uploadRouter = Router()
 

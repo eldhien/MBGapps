@@ -44,15 +44,23 @@ type SymptomMatch = {
   matchedText: string
 }
 
+type ComplaintPatternAccumulator = {
+  batchIds: Set<string>
+  category: DangerCategory
+  complaints: ComplaintInput[]
+  confidenceTotal: number
+  latestDate: Date | null
+  matches: string[]
+  schools: Set<string>
+  totalStudents: number
+}
+
 const categoryRank: Record<DangerCategory, number> = {
   Ringan: 1,
   Sedang: 2,
   Berat: 3,
 }
 
-// ─── 1. EXPANDED SYMPTOM CATALOG ─────────────────────────────────────────────
-// Menambahkan kosakata lokal (bahasa daerah), slang medis, dan sinonim
-// untuk meningkatkan cakupan deteksi gejala dari laporan teks bebas.
 const symptomCatalog = [
   {
     category: "Ringan",
@@ -575,7 +583,6 @@ function detectTrend(complaints: ComplaintInput[]): { status: TrendStatus; rate:
 
   if (recent === 0 && previous === 0) return { status: "Normal", rate: 0 }
 
-  // Jika sebelumnya tidak ada keluhan tapi sekarang ada, anggap sebagai lonjakan besar
   const rate = previous === 0 ? recent : Number((recent / previous).toFixed(2))
 
   let status: TrendStatus = "Normal"
@@ -597,32 +604,22 @@ export function buildComplaintAnalysis(input: {
     : input.complaints
   const schoolNames = createSchoolNameMap(input.schools)
   const batchById = new Map(input.batches.map((batch) => [batch.id, batch]))
-  const grouped = new Map<string, any>()
+  const grouped = new Map<string, ComplaintPatternAccumulator>()
 
   for (const complaint of complaints) {
     for (const symptom of detectSymptoms(complaint.gejala)) {
-      const current =
-      grouped.get(symptom.label) ??
+      const currentPattern =
+        grouped.get(symptom.label) ??
         {
           batchIds: new Set<string>(),
           category: "Ringan" as DangerCategory,
-          complaints: [],
+          complaints: [] as ComplaintInput[],
           confidenceTotal: 0,
           latestDate: null as Date | null,
           matches: [] as string[],
           schools: new Set<string>(),
           totalStudents: 0,
         }
-      const currentPattern = current as {
-        batchIds: Set<string>
-        category: DangerCategory
-        complaints: ComplaintInput[]
-        confidenceTotal: number
-        latestDate: Date | null
-        matches: string[]
-        schools: Set<string>
-        totalStudents: number
-      }
 
       currentPattern.complaints.push(complaint)
       currentPattern.confidenceTotal += symptom.confidence
@@ -661,7 +658,6 @@ export function buildComplaintAnalysis(input: {
       )
 
       return {
-        // Gunakan getAction dinamis dengan data batch aktual
         action: getAction(category, schools.length, batches),
         batches: batches.map((batch) => ({
           id: batch.id,

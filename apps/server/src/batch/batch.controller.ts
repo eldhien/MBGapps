@@ -2,8 +2,10 @@ import { KategoriKomposisi, Prisma, UserRole } from "@prisma/client"
 import { Request, Response } from "express"
 
 import { getCurrentUser } from "../auth/session.js"
-import { prisma } from "../lib/prisma.js"
+import { logger } from "../config/logger.js"
+import { prisma } from "../db/prisma.js"
 import { getSppgOwnerId } from "../lib/user-scope.js"
+import { parseJakartaDate } from "../utils/date.js"
 
 type BatchIngredientPayload = {
   harga?: number | string | null
@@ -30,28 +32,11 @@ type BatchSchoolPayload = {
 }
 
 const komposisiCategories = new Set<string>(Object.values(KategoriKomposisi))
-const JAKARTA_UTC_OFFSET = "+07:00"
-const HAS_TIME_ZONE_SUFFIX = /(?:z|[+-]\d{2}:?\d{2})$/i
 
 function normalizeKomposisiCategory(value?: string | null) {
   return value && komposisiCategories.has(value)
     ? (value as KategoriKomposisi)
     : null
-}
-
-function parseJakartaDate(value?: string | null) {
-  const normalizedValue = value?.trim()
-
-  if (!normalizedValue) {
-    return null
-  }
-
-  const dateValue = HAS_TIME_ZONE_SUFFIX.test(normalizedValue)
-    ? normalizedValue
-    : `${normalizedValue}${JAKARTA_UTC_OFFSET}`
-  const date = new Date(dateValue)
-
-  return Number.isNaN(date.getTime()) ? null : date
 }
 
 async function resolveMenuId(menuId?: string, namaMenu?: string) {
@@ -229,7 +214,7 @@ export const getBatches = async (req: Request, res: Response) => {
     })
     res.json(batches)
   } catch (error) {
-    console.error(error)
+    logger.error("Batch controller error.", error)
     res.status(500).json({ message: "Failed to fetch batches" })
   }
 }
@@ -273,7 +258,7 @@ export const getBatchById = async (req: Request, res: Response): Promise<void> =
 
     res.json(batch)
   } catch (error) {
-    console.error(error)
+    logger.error("Batch controller error.", error)
     res.status(500).json({ message: "Failed to fetch batch details" })
   }
 }
@@ -400,7 +385,7 @@ export const createBatch = async (req: Request, res: Response) => {
 
     res.status(201).json(newBatch)
   } catch (error) {
-    console.error(error)
+    logger.error("Batch controller error.", error)
     res
       .status(500)
       .json({ message: "Gagal membuat batch", error: getErrorMessage(error) })
@@ -442,7 +427,7 @@ export const updateBatchStatus = async (req: Request, res: Response): Promise<vo
 
     res.json(updatedBatch)
   } catch (error) {
-    console.error(error)
+    logger.error("Batch controller error.", error)
     res.status(500).json({ message: "Failed to update batch status" })
   }
 }
@@ -552,7 +537,7 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
 
     res.json(updatedBatch)
   } catch (error) {
-    console.error(error)
+    logger.error("Batch controller error.", error)
     res
       .status(500)
       .json({ message: "Gagal memperbarui batch", error: getErrorMessage(error) })
@@ -622,7 +607,7 @@ export const updateBatchDelivery = async (req: Request, res: Response): Promise<
 
     res.json(updatedBatch)
   } catch (error) {
-    console.error(error)
+    logger.error("Batch controller error.", error)
     res.status(500).json({ message: "Failed to update batch delivery" })
   }
 }
@@ -650,7 +635,7 @@ export const deleteBatch = async (req: Request, res: Response): Promise<void> =>
 
     res.status(204).send()
   } catch (error) {
-    console.error(error)
+    logger.error("Batch controller error.", error)
     res.status(500).json({ message: "Failed to delete batch" })
   }
 }

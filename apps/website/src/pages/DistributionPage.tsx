@@ -39,7 +39,7 @@ import {
   type ProductionBatch,
   type ProductionDistribution,
   type SchoolAccount,
-} from "@/lib/api"
+} from "@/services/api"
 import {
   getCachedPageData,
   pageCacheKeys,
@@ -54,7 +54,7 @@ import {
   getDistributionStatus,
   toDateTimeLocal,
 } from "@/lib/production"
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 
 type SchoolRow = {
   jumlahPorsi: string

@@ -30,14 +30,14 @@ import {
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TablePagination } from "@/components/ui/table-pagination"
-import { api, type Driver } from "@/lib/api"
+import { api, type Driver } from "@/services/api"
 import {
   clearCachedPageData,
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
 } from "@/lib/page-cache"
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 
 type FormState = {
   id?: string

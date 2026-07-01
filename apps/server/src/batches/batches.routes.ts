@@ -2,28 +2,12 @@ import { Router } from "express"
 import { LegacyBatchStatus, UserRole } from "@prisma/client"
 
 import { getCurrentUser } from "../auth/session.js"
-import { prisma } from "../lib/prisma.js"
+import { prisma } from "../db/prisma.js"
 import { getCurrentSchoolId } from "../lib/user-scope.js"
+import { parseJakartaDate } from "../utils/date.js"
 
 export const batchesRouter = Router()
 const batchStatuses = new Set<string>(Object.values(LegacyBatchStatus))
-const JAKARTA_UTC_OFFSET = "+07:00"
-const HAS_TIME_ZONE_SUFFIX = /(?:z|[+-]\d{2}:?\d{2})$/i
-
-function parseJakartaDate(value?: string | null) {
-  const normalizedValue = value?.trim()
-
-  if (!normalizedValue) {
-    return null
-  }
-
-  const dateValue = HAS_TIME_ZONE_SUFFIX.test(normalizedValue)
-    ? normalizedValue
-    : `${normalizedValue}${JAKARTA_UTC_OFFSET}`
-  const date = new Date(dateValue)
-
-  return Number.isNaN(date.getTime()) ? null : date
-}
 
 type RawSchoolBatch = {
   batch_id: string

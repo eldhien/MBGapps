@@ -1,4 +1,4 @@
-import { LoginForm } from "@/components/login-form"
+import { LoginForm } from "@/features/auth/components/LoginForm"
 import { AlertToast } from "@/components/ui/alert-toast"
 import { useEffect, useState } from "react"
 

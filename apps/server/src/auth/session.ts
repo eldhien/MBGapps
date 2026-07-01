@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken"
 import type { Request } from "express"
 
 import { env } from "../config/env.js"
-import { prisma } from "../lib/prisma.js"
+import { prisma } from "../db/prisma.js"
 import { findDemoUserById, findDemoUserByUsername, sanitizeDemoUser } from "./demo-users.js"
 import type { UserRole } from "./roles.js"
 

@@ -1,7 +1,7 @@
 import * as React from "react"
 
-import { NavMain } from "@/components/nav-main"
-import { NavUser } from "@/components/nav-user"
+import { NavMain } from "@/components/layout/NavMain"
+import { NavUser } from "@/components/layout/NavUser"
 import {
   Sidebar,
   SidebarContent,
@@ -13,7 +13,7 @@ import {
 import { useAuth } from "@/features/auth/AuthProvider"
 import { formatRole } from "@/features/auth/types"
 import { getVisibleNavigation } from "@/features/navigation/navigation"
-import logoSrc from "@/assets/logo.svg"
+import logoSrc from "@/assets/images/logo.svg"
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { profile, signOut } = useAuth()

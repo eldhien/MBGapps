@@ -21,14 +21,14 @@ import {
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TablePagination } from "@/components/ui/table-pagination"
-import type { KitchenChecklist } from "@/lib/api"
-import { api } from "@/lib/api"
+import type { KitchenChecklist } from "@/services/api"
+import { api } from "@/services/api"
 import {
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
 } from "@/lib/page-cache"
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 import {
   CameraIcon,
   CheckCircle2Icon,
@@ -1208,41 +1208,6 @@ export function KitchenChecklistPage({
           onClose={() => setZoomPhoto(null)}
         />
       ) : null}
-
-      {false && zoomPhoto
-        ? createPortal(
-            <div
-              className="pointer-events-auto fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => setZoomPhoto(null)}
-            >
-              <div
-                className="relative flex h-[95svh] max-h-[95svh] w-[95vw] flex-col overflow-hidden rounded-xl bg-popover p-3 shadow-lg"
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="absolute top-2 right-2 z-10 bg-background/80"
-                  onClick={() => setZoomPhoto(null)}
-                >
-                  ×
-                </Button>
-                <p className="mb-2 pr-10 text-sm font-medium">
-                  {zoomPhoto?.label}
-                </p>
-                <img
-                  src={zoomPhoto?.url}
-                  alt={zoomPhoto?.label}
-                  className="h-full w-full rounded-lg object-contain"
-                />
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
 
       <AlertDialog
         open={Boolean(deleteTarget)}

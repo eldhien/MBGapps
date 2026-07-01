@@ -35,14 +35,21 @@ import {
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TablePagination } from "@/components/ui/table-pagination"
-import { api, type SchoolDistribution } from "@/lib/api"
+import {
+  api,
+  type BatchPhoto,
+  type BatchSummary,
+  type ProductionBatch,
+  type ProductionDistribution,
+  type SchoolDistribution,
+} from "@/services/api"
 import {
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
   subscribePageCache,
 } from "@/lib/page-cache"
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 import { cn } from "@/lib/utils"
 
 const DISTRIBUTIONS_PER_PAGE = 10
@@ -279,7 +286,7 @@ function DetailModal({
     distribution.status === "DITERIMA" || distribution.status === "DITOLAK"
 
   const fotoMakananJadi = distribution.batch.foto?.find(
-    (f: any) => f.jenis === "MAKANAN_JADI"
+    (photo: BatchPhoto) => photo.jenis === "MAKANAN_JADI"
   )?.url
   const fotoBuktiTerima = distribution.buktiTerimaFotoUrl
 
@@ -771,7 +778,7 @@ export function SchoolDistributionsPage({
           )
         )
       )
-      const cachedBatches = getCachedPageData<any[]>(
+      const cachedBatches = getCachedPageData<ProductionBatch[]>(
         pageCacheKeys.productionBatches
       )
       if (cachedBatches) {
@@ -784,7 +791,7 @@ export function SchoolDistributionsPage({
           )
         )
       }
-      const cachedBatchSummaries = getCachedPageData<any[]>(
+      const cachedBatchSummaries = getCachedPageData<BatchSummary[]>(
         pageCacheKeys.batches
       )
       if (cachedBatchSummaries) {
@@ -808,7 +815,7 @@ export function SchoolDistributionsPage({
             : [updatedSummary, ...cachedBatchSummaries]
         )
       }
-      const cachedDistributions = getCachedPageData<any[]>(
+      const cachedDistributions = getCachedPageData<ProductionDistribution[]>(
         pageCacheKeys.productionDistributions
       )
       if (cachedDistributions) {
@@ -819,7 +826,7 @@ export function SchoolDistributionsPage({
               ? {
                   ...distribution,
                   status: response.distribution.distribution.status,
-                  schools: distribution.schools?.map((school: any) =>
+                  schools: distribution.schools?.map((school) =>
                     school.id === response.distribution.id
                       ? {
                           ...school,

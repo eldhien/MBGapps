@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { type Request, Router } from "express";
 
 import { env } from "../config/env.js";
-import { prisma } from "../lib/prisma.js";
+import { prisma } from "../db/prisma.js";
 import { findDemoUserByUsername } from "./demo-users.js";
 import { ensureSuperadminUser, SUPERADMIN_USERNAME } from "./system-user.js";
 import { createSession, getCurrentUser } from "./session.js";

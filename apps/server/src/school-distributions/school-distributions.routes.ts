@@ -11,7 +11,7 @@ import {
   fileBufferToDataUrl,
   uploadImageToCloudinary,
 } from "../lib/cloudinary.js"
-import { prisma } from "../lib/prisma.js"
+import { prisma } from "../db/prisma.js"
 import { getCurrentSchoolId } from "../lib/user-scope.js"
 
 export const schoolDistributionsRouter = Router()

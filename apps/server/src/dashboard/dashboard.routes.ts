@@ -2,8 +2,8 @@ import { Router } from "express"
 
 import { getCurrentUser } from "../auth/session.js"
 import { getFallbackDashboardAnalytics } from "../lib/fallback-store.js"
-import { requireAuth } from "../middleware/auth.js"
-import { prisma } from "../lib/prisma.js"
+import { requireAuth } from "../middlewares/auth.middleware.js"
+import { prisma } from "../db/prisma.js"
 import {
   getManagedSchoolReportIds,
   getReporterSchoolId,

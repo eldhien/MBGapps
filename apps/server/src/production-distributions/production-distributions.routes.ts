@@ -1,13 +1,11 @@
 import { BatchDistributionStatus, UserRole, type Prisma } from "@prisma/client"
 import { Router } from "express"
 
-import { prisma } from "../lib/prisma.js"
+import { prisma } from "../db/prisma.js"
 import { getSppgOwnerId, requireRoles } from "../lib/user-scope.js"
+import { parseJakartaDateOrNow } from "../utils/date.js"
 
 export const productionDistributionsRouter = Router()
-
-const JAKARTA_UTC_OFFSET = "+07:00"
-const HAS_TIME_ZONE_SUFFIX = /(?:z|[+-]\d{2}:?\d{2})$/i
 
 type DistributionWithRelations = Prisma.BatchDistributionGetPayload<{
   include: {
@@ -53,21 +51,6 @@ type DistributionResponse = {
   }[]
   status: string
   waktuKirim: string | null
-}
-
-function parseDistributionDate(value?: string | null) {
-  if (!value) {
-    return new Date()
-  }
-
-  const normalizedValue = value.trim()
-  const date = new Date(
-    HAS_TIME_ZONE_SUFFIX.test(normalizedValue)
-      ? normalizedValue
-      : `${normalizedValue}${JAKARTA_UTC_OFFSET}`
-  )
-
-  return Number.isNaN(date.getTime()) ? new Date() : date
 }
 
 function toDistributionResponse(
@@ -468,7 +451,7 @@ productionDistributionsRouter.post("/", async (req, res, next) => {
         data: {
           batchId,
           status: status as BatchDistributionStatus,
-          waktuKirim: parseDistributionDate(waktuKirim),
+          waktuKirim: parseJakartaDateOrNow(waktuKirim),
           schools: {
             create: validSchools.map((item) => ({
               schoolId: item.schoolId as string,
@@ -668,7 +651,7 @@ productionDistributionsRouter.patch("/:id", async (req, res, next) => {
         data: {
           ...(batchId ? { batchId } : {}),
           ...(status ? { status: status as BatchDistributionStatus } : {}),
-          ...(waktuKirim ? { waktuKirim: parseDistributionDate(waktuKirim) } : {}),
+          ...(waktuKirim ? { waktuKirim: parseJakartaDateOrNow(waktuKirim) } : {}),
         },
       })
 

@@ -295,6 +295,13 @@ enum FoodReportStatus {
   RESOLVED
 }
 
+enum StudentComplaintType {
+  KELUHAN_MEDIS
+  KELUHAN_UMUM
+  PUJIAN
+  LAINNYA
+}
+
 enum ReportCategory {
   BASI
   RUSAK
@@ -377,6 +384,7 @@ model FoodReport {
 
 model StudentComplaint {
   id            String   @id @default(uuid())
+  jenisLaporan  StudentComplaintType @default(KELUHAN_MEDIS) @map("jenis_laporan")
   jumlahSiswa   Int
   gejala        String
   waktuKejadian DateTime @map("waktu_kejadian")

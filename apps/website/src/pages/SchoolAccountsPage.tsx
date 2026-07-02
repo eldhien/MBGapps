@@ -36,13 +36,13 @@ import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { TablePagination } from "@/components/ui/table-pagination"
 import { useAuth } from "@/features/auth/AuthProvider"
-import { api, type ManagedUser, type SchoolAccount } from "@/lib/api"
+import { api, type ManagedUser, type SchoolAccount } from "@/services/api"
 import {
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
 } from "@/lib/page-cache"
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 
 type FormState = {
   address: string

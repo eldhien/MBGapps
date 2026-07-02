@@ -26,7 +26,7 @@ import {
   api,
   type ProductionBatch,
   type ProductionDistribution,
-} from "@/lib/api"
+} from "@/services/api"
 import { cn } from "@/lib/utils"
 import {
   getCachedPageData,
@@ -35,11 +35,12 @@ import {
   subscribePageCache,
 } from "@/lib/page-cache"
 import {
+  dateTimeLocalToISOString,
   getBatchRemainingPortions,
   getLatestFoodPhotoUrl,
   toDateTimeLocal,
 } from "@/lib/production"
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 import {
   CheckCircle2Icon,
   EyeIcon,
@@ -360,8 +361,8 @@ export function BatchListPage({
       let updated = await api.productionBatches.update(editTarget.id, {
         namaMenu: editForm.namaMenu.trim(),
         totalPorsi: Number(editForm.totalPorsi),
-        waktuMulai: editForm.waktuMulai || undefined,
-        waktuSelesai: editForm.waktuSelesai || undefined,
+        waktuMulai: dateTimeLocalToISOString(editForm.waktuMulai),
+        waktuSelesai: dateTimeLocalToISOString(editForm.waktuSelesai),
         varian: [
           {
             namaVarian: "Utama",
@@ -990,38 +991,6 @@ export function BatchListPage({
       {zoomFotoUrl ? (
         <PhotoLightbox url={zoomFotoUrl} onClose={() => setZoomFotoUrl(null)} />
       ) : null}
-
-      {false && zoomFotoUrl
-        ? createPortal(
-            <div
-              className="pointer-events-auto fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => setZoomFotoUrl(null)}
-            >
-              <div
-                className="relative flex h-[95svh] max-h-[95svh] w-[95vw] flex-col overflow-hidden rounded-xl bg-popover p-3 shadow-lg"
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => event.stopPropagation()}
-              >
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="absolute top-2 right-2 z-10 bg-background/80"
-                  onClick={() => setZoomFotoUrl(null)}
-                >
-                  ×
-                </Button>
-                <img
-                  src={zoomFotoUrl ?? undefined}
-                  alt="Preview foto makanan"
-                  className="h-full w-full rounded-lg object-contain"
-                />
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
 
       <AlertDialog
         open={Boolean(deleteTarget)}

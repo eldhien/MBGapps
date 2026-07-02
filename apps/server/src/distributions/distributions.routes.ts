@@ -1,7 +1,7 @@
 import { Router } from "express"
 
-import { prisma } from "../lib/prisma.js"
-import { requireAuth } from "../middleware/auth.js"
+import { prisma } from "../db/prisma.js"
+import { requireAuth } from "../middlewares/auth.middleware.js"
 
 export const distributionsRouter = Router()
 

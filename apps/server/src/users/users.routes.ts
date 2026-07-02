@@ -4,7 +4,7 @@ import { UserRole } from "@prisma/client"
 
 import { listDemoUsers } from "../auth/demo-users.js"
 import { ensureSuperadminUser } from "../auth/system-user.js"
-import { prisma } from "../lib/prisma.js"
+import { prisma } from "../db/prisma.js"
 import { isUuid, requireRoles } from "../lib/user-scope.js"
 
 export const usersRouter = Router()

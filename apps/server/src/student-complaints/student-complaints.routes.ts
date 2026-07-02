@@ -9,14 +9,15 @@ import {
   createFallbackStudentComplaint,
   listFallbackStudentComplaints,
 } from "../lib/fallback-store.js"
-import { prisma } from "../lib/prisma.js"
-import { requireAuth } from "../middleware/auth.js"
+import { prisma } from "../db/prisma.js"
+import { requireAuth } from "../middlewares/auth.middleware.js"
 import {
   getManagedSchoolReportIds,
   getReporterSchoolId,
   getSppgOwnerId,
   isUuid,
 } from "../lib/user-scope.js"
+import { parseJakartaDate } from "../utils/date.js"
 
 export const studentComplaintsRouter = Router()
 
@@ -292,7 +293,7 @@ studentComplaintsRouter.post("/", async (req, res, next) => {
       currentUser.role === "SEKOLAH"
         ? reporterSchoolId
         : sekolahId?.trim() || currentUser.id
-    const incidentDate = waktuKejadian ? new Date(waktuKejadian) : null
+    const incidentDate = parseJakartaDate(waktuKejadian)
 
     if (
       !jumlahSiswa ||
@@ -341,7 +342,7 @@ studentComplaintsRouter.post("/", async (req, res, next) => {
       currentUser.role === "SEKOLAH"
         ? reporterSchoolId
         : sekolahId?.trim() || currentUser.id
-    const incidentDate = waktuKejadian ? new Date(waktuKejadian) : null
+    const incidentDate = parseJakartaDate(waktuKejadian)
 
     if (
       !jumlahSiswa ||

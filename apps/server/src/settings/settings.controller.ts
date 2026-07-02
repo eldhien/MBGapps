@@ -1,6 +1,7 @@
 import { Request, Response } from "express"
 
-import { prisma } from "../lib/prisma.js"
+import { logger } from "../config/logger.js"
+import { prisma } from "../db/prisma.js"
 
 // GET /api/settings/dapur?date=YYYY-MM-DD
 export const getDapurCapacity = async (req: Request, res: Response) => {
@@ -21,7 +22,7 @@ export const getDapurCapacity = async (req: Request, res: Response) => {
 
     res.json(capacity)
   } catch (error) {
-    console.error(error)
+    logger.error("Settings controller error.", error)
     res.status(500).json({ message: "Failed to fetch capacity" })
   }
 }
@@ -46,7 +47,7 @@ export const setDapurCapacity = async (req: Request, res: Response): Promise<voi
 
     res.json(updated)
   } catch (error) {
-    console.error(error)
+    logger.error("Settings controller error.", error)
     res.status(500).json({ message: "Failed to set capacity" })
   }
 }

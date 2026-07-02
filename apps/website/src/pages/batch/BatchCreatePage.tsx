@@ -1,13 +1,14 @@
 import { AlertToast } from "@/components/ui/alert-toast"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { api } from "@/lib/api"
+import { api } from "@/services/api"
 import {
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
 } from "@/lib/page-cache"
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { dateTimeLocalToISOString } from "@/lib/production"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 import { CheckCircle2Icon, ImageIcon, PlusIcon, Trash2Icon } from "lucide-react"
 import { useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
@@ -68,8 +69,8 @@ export function BatchCreatePage() {
       const result = await api.productionBatches.create({
         namaMenu: form.namaMenu.trim(),
         totalPorsi,
-        waktuMulai: form.waktuMulai || undefined,
-        waktuSelesai: form.waktuSelesai || undefined,
+        waktuMulai: dateTimeLocalToISOString(form.waktuMulai),
+        waktuSelesai: dateTimeLocalToISOString(form.waktuSelesai),
         varian: [
           {
             namaVarian: "Utama",

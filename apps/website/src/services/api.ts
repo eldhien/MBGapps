@@ -1,7 +1,7 @@
 import type { UserProfile, UserRole } from "@/features/auth/types"
 
 const API_URL = (
-  import.meta.env.VITE_API_URL || "http://localhost:4000"
+  import.meta.env.VITE_API_URL
 ).replace(/\/$/, "")
 const TOKEN_KEY = "mbg_session"
 
@@ -598,7 +598,6 @@ export const api = {
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error("Upload failed with status:", response.status, errorText)
         throw new Error(`Gagal mengunggah foto: ${errorText}`)
       }
       return response.json() as Promise<BatchPhoto>

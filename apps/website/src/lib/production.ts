@@ -2,7 +2,7 @@ import type {
   BatchPhoto,
   ProductionBatch,
   ProductionDistribution,
-} from "@/lib/api"
+} from "@/services/api"
 
 export function getCurrentDateTimeLocal() {
   const value = new Date()

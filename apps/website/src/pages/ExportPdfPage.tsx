@@ -18,13 +18,13 @@ import {
   type FoodReport,
   type ProductionDistribution,
   type StudentComplaint,
-} from "@/lib/api"
+} from "@/services/api"
 import {
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
 } from "@/lib/page-cache"
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 
 type ReportType = "production" | "distribution" | "risk" | "complaints"
 
@@ -416,7 +416,7 @@ function buildReportSections(selectedReports: ReportType[], data: ExportData, da
   // VI. KESIMPULAN
   sections.push(`
     <section>
-      <h2>${toRoman(sectionCounter++)}. KESIMPULAN</h2>
+      <h2>${toRoman(sectionCounter)}. KESIMPULAN</h2>
       <div class="box-text">
         <p>Secara umum, kegiatan produksi dan distribusi Program MBG pada periode ${escapeHtml(dateRangeLabel)} berjalan dengan volume yang cukup tinggi (${formatNumber(analytics.totalBatches)} batch dan ${formatNumber(analytics.totalDistributions)} distribusi), namun diiringi dengan tingkat risiko operasional yang tergolong ${escapeHtml(risk.riskLabel.toLowerCase())} akibat banyaknya keluhan siswa dan laporan permasalahan makanan yang belum tertangani. Diperlukan perhatian khusus dan tindak lanjut segera pada aspek keamanan pangan dan responsivitas penanganan keluhan agar kualitas layanan pada periode berikutnya dapat ditingkatkan.</p>
       </div>

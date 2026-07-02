@@ -30,13 +30,13 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { TablePagination } from "@/components/ui/table-pagination"
 import { useAuth } from "@/features/auth/AuthProvider"
 import { formatRole, type UserRole } from "@/features/auth/types"
-import { api, type ManagedUser } from "@/lib/api"
+import { api, type ManagedUser } from "@/services/api"
 import {
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
 } from "@/lib/page-cache"
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 import {
   EyeIcon,
   EyeOffIcon,

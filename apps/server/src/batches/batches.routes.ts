@@ -2,8 +2,9 @@ import { Router } from "express"
 import { LegacyBatchStatus, UserRole } from "@prisma/client"
 
 import { getCurrentUser } from "../auth/session.js"
-import { prisma } from "../lib/prisma.js"
+import { prisma } from "../db/prisma.js"
 import { getCurrentSchoolId } from "../lib/user-scope.js"
+import { parseJakartaDate } from "../utils/date.js"
 
 export const batchesRouter = Router()
 const batchStatuses = new Set<string>(Object.values(LegacyBatchStatus))
@@ -106,11 +107,13 @@ batchesRouter.post("/", async (req, res, next) => {
         sppgId?: string
       }
 
-    if (!namaMenu || !jumlahPorsi || !komposisi || !waktuProduksi) {
+    const productionDate = parseJakartaDate(waktuProduksi)
+
+    if (!namaMenu || !jumlahPorsi || !komposisi || !productionDate) {
       return res.status(400).json({ message: "Data batch tidak lengkap." })
     }
 
-    const batchIdUnik = `MBG-${new Date(waktuProduksi).toISOString().slice(0, 10).replace(/-/g, "/")}-${Date.now().toString().slice(-6)}`
+    const batchIdUnik = `MBG-${productionDate.toISOString().slice(0, 10).replace(/-/g, "/")}-${Date.now().toString().slice(-6)}`
 
     const batch = await prisma.batch.create({
       data: {
@@ -118,7 +121,7 @@ batchesRouter.post("/", async (req, res, next) => {
         namaMenu,
         jumlahPorsi,
         komposisi,
-        waktuProduksi: new Date(waktuProduksi),
+        waktuProduksi: productionDate,
         driverId,
         photoUrl,
         sppgId,

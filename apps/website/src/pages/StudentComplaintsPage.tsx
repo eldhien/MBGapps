@@ -16,19 +16,21 @@ import type {
   SchoolAccount,
   SchoolDistribution,
   StudentComplaint,
-} from "@/lib/api"
-import { api } from "@/lib/api"
+} from "@/services/api"
+import { api } from "@/services/api"
 import {
   getCachedPageData,
   pageCacheKeys,
   setCachedPageData,
 } from "@/lib/page-cache"
-import { DashboardShell } from "@/pages/components/DashboardShell"
+import { DashboardShell } from "@/components/layout/DashboardShell"
 import {
   CalendarIcon,
   ClockIcon,
 } from "lucide-react"
 import { useEffect, useState, type FormEvent } from "react"
+
+const JAKARTA_TIME_ZONE = "Asia/Jakarta"
 
 function getCurrentDateTimeLocal() {
   const now = new Date()
@@ -46,12 +48,32 @@ function parseDateTimeLocal(value: string) {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed
 }
 
+function dateTimeLocalToISOString(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toISOString()
+}
+
 function formatDateTimeLabel(value: string) {
   const date = parseDateTimeLocal(value)
 
   return date.toLocaleString("id-ID", {
     dateStyle: "medium",
+    timeZone: JAKARTA_TIME_ZONE,
     timeStyle: "short",
+  })
+}
+
+function formatComplaintDate(value: string) {
+  return new Date(value).toLocaleDateString("id-ID", {
+    timeZone: JAKARTA_TIME_ZONE,
+  })
+}
+
+function formatComplaintTime(value: string) {
+  return new Date(value).toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: JAKARTA_TIME_ZONE,
   })
 }
 
@@ -236,7 +258,7 @@ export function StudentComplaintsPage({
     const payload = {
       jumlahSiswa: Number(form.jumlahSiswa),
       gejala: form.gejala.trim(),
-      waktuKejadian: form.waktuKejadian,
+      waktuKejadian: dateTimeLocalToISOString(form.waktuKejadian),
       tindakan: form.tindakan.trim(),
       ...(form.batchId ? { batchId: form.batchId } : {}),
     }
@@ -562,14 +584,10 @@ export function StudentComplaintsPage({
                         >
                           <td className="px-5 py-4">
                             <p className="font-semibold text-[#111827]">
-                              {new Date(
-                                complaint.waktuKejadian
-                              ).toLocaleDateString("id-ID")}
+                              {formatComplaintDate(complaint.waktuKejadian)}
                             </p>
                             <p className="mt-0.5 text-xs text-muted-foreground">
-                              {new Date(
-                                complaint.waktuKejadian
-                              ).toLocaleTimeString("id-ID")}
+                              {formatComplaintTime(complaint.waktuKejadian)}
                             </p>
                           </td>
                           {showSchoolReporter ? (

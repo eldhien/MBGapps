@@ -25,6 +25,7 @@ type FoodReportRecord = {
 
 type StudentComplaintRecord = {
   id: string
+  jenisLaporan: "KELUHAN_MEDIS" | "KELUHAN_UMUM" | "PUJIAN" | "LAINNYA"
   jumlahSiswa: number
   gejala: string
   waktuKejadian: Date

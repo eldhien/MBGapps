@@ -1,7 +1,7 @@
 import bcrypt from "bcryptjs"
 import { UserRole } from "@prisma/client"
 
-import { prisma } from "../lib/prisma.js"
+import { prisma } from "../db/prisma.js"
 
 export const SUPERADMIN_USERNAME = "superadmin"
 export const SUPERADMIN_PASSWORD = "superadmin"

@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs"
 import type { Request } from "express"
 
 import { getCurrentUser } from "../auth/session.js"
-import { prisma } from "./prisma.js"
+import { prisma } from "../db/prisma.js"
 
 export type CurrentUser = NonNullable<
   Awaited<ReturnType<typeof getCurrentUser>>

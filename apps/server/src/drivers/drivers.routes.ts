@@ -1,7 +1,7 @@
 import { Router } from "express"
 import { UserRole } from "@prisma/client"
 
-import { prisma } from "../lib/prisma.js"
+import { prisma } from "../db/prisma.js"
 import { getSppgOwnerId, requireRoles } from "../lib/user-scope.js"
 
 export const driversRouter = Router()
